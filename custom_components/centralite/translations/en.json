@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Centralite",
+        "description": "Configure your Centralite bridge."
+      }
+    }
+  }
+}
