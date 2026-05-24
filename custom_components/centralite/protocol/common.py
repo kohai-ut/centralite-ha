@@ -9,6 +9,11 @@ its equivalent bulk queries; the helpers are reused.
 
 from __future__ import annotations
 
+
+class ProtocolError(RuntimeError):
+    """A response from the bridge could not be parsed or didn't arrive."""
+
+
 LOAD_BITMAP_HEX_LEN = 48
 LOADS_PER_BOARD = 24
 MAX_BOARDS = 8
