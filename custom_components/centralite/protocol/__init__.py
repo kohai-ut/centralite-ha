@@ -27,11 +27,17 @@ class LoadEvent:
 
 @dataclass(frozen=True, slots=True)
 class SwitchEvent:
-    """Push event: a physical switch was pressed, released, or tapped."""
+    """Push event: a physical switch was pressed, released, or tapped.
+
+    `idx` and `board` are used by Elegance (idx is global 1-384, board is the
+    board number 0-4). `idx` and `button` are used by JetStream (idx is the
+    device 1-199, button is 1-3). The unused field is 0 on the other system.
+    """
 
     idx: int
     action: str
     board: int = 0
+    button: int = 0
 
 
 @dataclass(frozen=True, slots=True)

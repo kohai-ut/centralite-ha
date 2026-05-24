@@ -1,1 +1,275 @@
-"""JetStreamProtocol: RS-232 protocol implementation for Centralite JetStream bridges."""
+"""JetStreamProtocol: RS-232 protocol for Centralite JetStream bridges.
+
+Implements the third-party protocol documented in
+docs/protocols/jetstream-rs232-bridge.pdf.
+
+Differences vs Elegance:
+- Extra commands: ^N (device name query), ^T (tap switch), inc/dec
+  (increment/decrement load), Ping (returns Hello).
+- Switches are addressed as (device_idx, button_idx); buttons 1-3 per device.
+- Push events use different prefixes:
+    DEV ddd ll       len 8   - load level change
+    ACT ddd bb T/P/R len 9   - button tap/press/release
+    SCN sss 1/0      len 7   - scene activate/deactivate
+- supports_device_name_query = True
+- supports_scene_push = True (Elegance has no scene push)
+
+Note: command-completion responses for ^A/^B/^E/^F arrive in DEV format
+(i.e. as push events), so the dispatcher fires the load callback AND
+fulfills any pending request for the same line. For ^F specifically, the
+caller provides a matcher to ignore unrelated DEV pushes.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from . import LoadEvent, SceneEvent, SwitchEvent
+from ._base import _BaseSerialProtocol
+from .common import ProtocolError, parse_load_bitmap, parse_switch_bitmap
+
+_LOGGER = logging.getLogger(__name__)
+
+# Per docs/protocols/jetstream-rs232-bridge.pdf p.8
+JETSTREAM_MAX_LOADS = 199
+JETSTREAM_MAX_SCENES = 100
+JETSTREAM_MAX_SWITCHES = 199
+JETSTREAM_MAX_BUTTONS_PER_SWITCH = 3
+
+DEV_PREFIX = "DEV"
+ACT_PREFIX = "ACT"
+SCN_PREFIX = "SCN"
+NAM_PREFIX = "NAM"
+HELLO_RESPONSE = "Hello"
+
+DEV_LEN = 8  # "DEV" + 3 idx + 2 level
+ACT_LEN = 9  # "ACT" + 3 idx + 2 button + 1 action
+SCN_LEN = 7  # "SCN" + 3 idx + 1 state
+
+
+_ACTION_MAP = {"T": "tap", "P": "press", "R": "release"}
+
+
+class JetStreamProtocol(_BaseSerialProtocol):
+    """Async JetStream bridge protocol."""
+
+    @property
+    def max_loads(self) -> int:
+        return JETSTREAM_MAX_LOADS
+
+    @property
+    def max_switches(self) -> int:
+        return JETSTREAM_MAX_SWITCHES
+
+    @property
+    def supports_device_name_query(self) -> bool:
+        return True
+
+    @property
+    def supports_scene_push(self) -> bool:
+        return True
+
+    async def activate_load(self, idx: int) -> None:
+        self._validate_load_idx(idx)
+        await self._send(f"^A{idx:03d}")
+
+    async def deactivate_load(self, idx: int) -> None:
+        self._validate_load_idx(idx)
+        await self._send(f"^B{idx:03d}")
+
+    async def set_load_level(self, idx: int, level: int, rate: int = 0) -> None:
+        self._validate_load_idx(idx)
+        if not 0 <= level <= 99:
+            raise ValueError(f"level must be 0-99, got {level}")
+        if not 0 <= rate <= 31:
+            raise ValueError(f"rate must be 0-31, got {rate}")
+        await self._send(f"^E{idx:03d}{level:02d}{rate:02d}")
+
+    async def get_load_level(self, idx: int) -> int:
+        """Send ^F and wait for a DEV response specifically for this idx."""
+        self._validate_load_idx(idx)
+        expected_prefix = f"{DEV_PREFIX}{idx:03d}"
+
+        def matches(line: str) -> bool:
+            return len(line) == DEV_LEN and line.startswith(expected_prefix)
+
+        response = await self._sendrecv(f"^F{idx:03d}", matches=matches)
+        try:
+            return int(response[6:8])
+        except ValueError as e:
+            raise ProtocolError(f"Bad ^F response: {response!r}") from e
+
+    async def get_all_load_states(self) -> dict[int, bool]:
+        def matches(line: str) -> bool:
+            return len(line) == 48 and all(c in "0123456789ABCDEFabcdef" for c in line)
+
+        response = await self._sendrecv("^G", matches=matches)
+        return parse_load_bitmap(response.strip())
+
+    async def activate_scene(self, idx: int) -> None:
+        self._validate_scene_idx(idx)
+        await self._send(f"^C{idx:03d}")
+
+    async def deactivate_scene(self, idx: int) -> None:
+        self._validate_scene_idx(idx)
+        await self._send(f"^D{idx:03d}")
+
+    async def press_switch(
+        self, idx: int, *, button: int = 1, auto_release: bool = True
+    ) -> None:
+        """Press a switch button.
+
+        JetStream-specific kwarg: `button` (1-3). The CentraliteProtocol ABC
+        defines press_switch(idx) only; JetStream extends with button selection.
+        auto_release here is a no-op (^P is followed naturally by the user
+        physically releasing); included for ABC compatibility.
+        """
+        self._validate_switch_idx(idx)
+        self._validate_button_idx(button)
+        await self._send(f"^P{idx:03d}{button:02d}")
+        if auto_release:
+            await self.release_switch(idx, button=button)
+
+    async def release_switch(self, idx: int, *, button: int = 1) -> None:
+        self._validate_switch_idx(idx)
+        self._validate_button_idx(button)
+        await self._send(f"^R{idx:03d}{button:02d}")
+
+    async def tap_switch(self, idx: int, *, button: int = 1) -> None:
+        """JetStream ^T: simulate a complete tap (press+release in one command)."""
+        self._validate_switch_idx(idx)
+        self._validate_button_idx(button)
+        await self._send(f"^T{idx:03d}{button:02d}")
+
+    async def get_all_switch_states(self) -> dict[int, bool]:
+        def matches(line: str) -> bool:
+            return len(line) == 96 and all(c in "0123456789ABCDEFabcdef" for c in line)
+
+        response = await self._sendrecv("^H", matches=matches)
+        return parse_switch_bitmap(response.strip())
+
+    async def get_device_name(self, idx: int) -> str | None:
+        """Query the bridge for a device's stored friendly name (JetStream-only)."""
+        self._validate_load_idx(idx)
+
+        def matches(line: str) -> bool:
+            return line.startswith(NAM_PREFIX)
+
+        try:
+            response = await self._sendrecv(f"^N{idx:03d}", matches=matches)
+        except ProtocolError:
+            return None
+        name = response[len(NAM_PREFIX) :].strip()
+        return name or None
+
+    async def increment_load(self, idx: int, value: int = 1, rate: int = 0) -> None:
+        self._validate_load_idx(idx)
+        await self._send(f"inc {idx} {value} {rate}")
+
+    async def decrement_load(self, idx: int, value: int = 1, rate: int = 0) -> None:
+        self._validate_load_idx(idx)
+        await self._send(f"dec {idx} {value} {rate}")
+
+    async def ping(self) -> bool:
+        """Send Ping; return True if the bridge responds with Hello."""
+
+        def matches(line: str) -> bool:
+            return line == HELLO_RESPONSE
+
+        try:
+            response = await self._sendrecv("Ping", matches=matches)
+        except ProtocolError:
+            return False
+        return response == HELLO_RESPONSE
+
+    def _dispatch(self, line: str) -> None:
+        # Push events on JetStream:
+        #   DEV ddd ll          len 8
+        #   ACT ddd bb T/P/R    len 9
+        #   SCN sss 1/0         len 7
+        # Each may also be the response to a pending command, so fire callback
+        # AND attempt to fulfill the pending request.
+        if len(line) == DEV_LEN and line.startswith(DEV_PREFIX):
+            self._dispatch_load_event(line)
+            self._try_fulfill(line)
+            return
+        if len(line) == ACT_LEN and line.startswith(ACT_PREFIX):
+            self._dispatch_switch_event(line)
+            self._try_fulfill(line)
+            return
+        if len(line) == SCN_LEN and line.startswith(SCN_PREFIX):
+            self._dispatch_scene_event(line)
+            self._try_fulfill(line)
+            return
+        # Direct responses: NAMxxx, Hello, bulk hex (^G/^H).
+        self._try_fulfill(line)
+
+    def _dispatch_load_event(self, line: str) -> None:
+        cb = self._load_event_cb
+        if cb is None:
+            return
+        try:
+            idx = int(line[3:6])
+            level = int(line[6:8])
+        except ValueError:
+            _LOGGER.warning("Malformed DEV event: %r", line)
+            return
+        try:
+            cb(LoadEvent(idx=idx, level=level))
+        except Exception:
+            _LOGGER.exception("Load event callback failed for %r", line)
+
+    def _dispatch_switch_event(self, line: str) -> None:
+        cb = self._switch_event_cb
+        if cb is None:
+            return
+        try:
+            idx = int(line[3:6])
+            button = int(line[6:8])
+        except ValueError:
+            _LOGGER.warning("Malformed ACT event: %r", line)
+            return
+        action = _ACTION_MAP.get(line[8])
+        if action is None:
+            _LOGGER.warning("Unknown ACT action %r in %r", line[8], line)
+            return
+        try:
+            cb(SwitchEvent(idx=idx, action=action, button=button))
+        except Exception:
+            _LOGGER.exception("Switch event callback failed for %r", line)
+
+    def _dispatch_scene_event(self, line: str) -> None:
+        cb = self._scene_event_cb
+        if cb is None:
+            return
+        try:
+            idx = int(line[3:6])
+        except ValueError:
+            _LOGGER.warning("Malformed SCN event: %r", line)
+            return
+        state_char = line[6]
+        if state_char not in ("0", "1"):
+            _LOGGER.warning("Unknown SCN state %r in %r", state_char, line)
+            return
+        try:
+            cb(SceneEvent(idx=idx, active=state_char == "1"))
+        except Exception:
+            _LOGGER.exception("Scene event callback failed for %r", line)
+
+    def _validate_load_idx(self, idx: int) -> None:
+        if not 1 <= idx <= JETSTREAM_MAX_LOADS:
+            raise ValueError(f"load idx must be 1-{JETSTREAM_MAX_LOADS}, got {idx}")
+
+    def _validate_switch_idx(self, idx: int) -> None:
+        if not 1 <= idx <= JETSTREAM_MAX_SWITCHES:
+            raise ValueError(f"switch idx must be 1-{JETSTREAM_MAX_SWITCHES}, got {idx}")
+
+    def _validate_scene_idx(self, idx: int) -> None:
+        if not 1 <= idx <= JETSTREAM_MAX_SCENES:
+            raise ValueError(f"scene idx must be 1-{JETSTREAM_MAX_SCENES}, got {idx}")
+
+    def _validate_button_idx(self, button: int) -> None:
+        if not 1 <= button <= JETSTREAM_MAX_BUTTONS_PER_SWITCH:
+            raise ValueError(
+                f"button must be 1-{JETSTREAM_MAX_BUTTONS_PER_SWITCH}, got {button}"
+            )
