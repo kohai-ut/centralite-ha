@@ -4,15 +4,34 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [2.0.0a1] - 2026-05-24
+
+First alpha release of the v2 greenfield rewrite. Unifies the v1 Elegance and JetStream integrations into one HACS-compatible package.
+
 ### Added
 
-- Project scaffolding: HACS-ready directory layout, `manifest.json`, `hacs.json`, MIT license
-- GitHub Actions workflow running `hassfest` and HACS validation on every push
-- Empty module skeletons for protocol abstraction (Elegance + JetStream), entity layer, coordinator, config flow, parsers, and one-time migration helper
+- **Async protocol layer** with separate Elegance and JetStream implementations behind a common `CentraliteProtocol` ABC. Built on [`serialx`](https://github.com/home-assistant-libs/serialx). Single asyncio reader task with shape-based dispatch and request/response correlation via Futures.
+- **DataUpdateCoordinator** (push-primary, no `update_interval`) with optional safety-net `^G` poll for loads not programmed for spontaneous output.
+- **Config flow** with system type, serial port, and baud rate. Two-step setup with optional `.elg`/`.jts` bulk-import OR comma-separated device IDs.
+- **Options flow** for safety-net poll interval and Elegance Customer Option bit #6 (append CR).
+- **Entities**: `CentraliteLight`, `CentraliteEleganceButtonSwitch`, `CentraliteJetStreamButtonSwitch`, `CentraliteSceneSwitch`. Shared `DeviceInfo` per entry; `has_entity_name = True` for auto-composing display names.
+- **Scene-as-switch** — single stateful switch per Centralite scene. JetStream uses real `SCN` push state; Elegance uses commanded state (documented limitation).
+- **`.elg` parser** with tolerant INI-style parsing. Tested against a real 192-load, 22-scene config.
+- **One-time v1 -> v2 migration** of entity-registry unique_ids. Renames v1 entries (`elegance.L001`, `jetstream.JSSW04401`, etc.) to the new index-based scheme. Removes obsolete `scene*OFF` entries. Preserves all user customizations. Surfaces a Repairs issue listing the changes so users can update automations.
+- **HACS metadata** (`hacs.json`), GitHub Actions for hassfest + HACS validation, MIT license, comprehensive README, issue templates.
+- **Corporate PDFs** preserved in `docs/protocols/` — Elegance and JetStream protocol guides, programming manuals.
+- **Test suite** with 113 unit tests covering bit-layout decoders, both protocol implementations (against a fake serial transport), .elg parsing against real-world quirks, and migration classifier idempotency. All tests run as standalone scripts without pytest installed (also pytest-compatible).
 
-## Legacy v1
+### Migration from v1
 
-The v2 codebase is a greenfield rewrite. For v1 history see:
+This is a fresh repository. Users of the v1 integrations should:
 
-- [kohai-ut/centralite_elegance @ v1.0.1](https://github.com/kohai-ut/centralite_elegance/releases/tag/v1.0.1) — Elegance integration
-- [kohai-ut/centralite_jetstream @ v1.0.1](https://github.com/kohai-ut/centralite_jetstream/releases/tag/v1.0.1) — JetStream integration
+1. Install v2 via HACS as a custom repository.
+2. Add a Centralite integration via the UI.
+3. On first load, v2 detects v1 entities and migrates them in place.
+4. Check **Settings → Repairs** for the migration log.
+5. Update any automations referencing the old entity IDs (HA does not auto-rewrite YAML).
+
+The v1 repositories are archived at `v1.0.1`:
+- [centralite_elegance @ v1.0.1](https://github.com/kohai-ut/centralite_elegance/releases/tag/v1.0.1)
+- [centralite_jetstream @ v1.0.1](https://github.com/kohai-ut/centralite_jetstream/releases/tag/v1.0.1)

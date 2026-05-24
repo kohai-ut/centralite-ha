@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Home Assistant Community
+    url: https://community.home-assistant.io/
+    about: For general HA questions not specific to this integration.
+  - name: Centralite v1 (legacy)
+    url: https://github.com/kohai-ut/centralite_elegance
+    about: If you're using the v1 Elegance integration, file issues there (note v1 is archived; only critical security fixes).

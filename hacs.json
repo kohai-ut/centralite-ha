@@ -1,6 +1,6 @@
 {
-  "name": "Centralite Lighting",
+  "name": "Centralite Lighting (Elegance + JetStream)",
   "render_readme": true,
   "homeassistant": "2026.5.0",
-  "country": "US"
+  "country": ["US"]
 }
