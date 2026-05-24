@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Fixed
+
+- **Integration now declares its `serialx` dependency.** `manifest.json` had an empty `requirements`, so a HACS install would fail on first connect because Home Assistant never installed `serialx` (it is not a HA core dependency).
+- **Options flow no longer crashes on open.** It assigned the now read-only `OptionsFlow.config_entry`, which raises on HA 2024.11+. Reworked to the current pattern where `self.config_entry` is framework-provided.
+- **JetStream is correctly treated as push-only.** JetStream has no bulk-state command (`^G`/`^H` do not exist in its protocol); the old code sent them and timed out on every initial query and safety poll, logging a traceback every interval. Added a `supports_bulk_query` capability flag; the coordinator now skips priming and the safety poll for JetStream and relies on spontaneous `DEV`/`ACT`/`SCN` output.
+- **`light.turn_on` with low brightness no longer turns the light off.** Brightness 1-2 rounded down to level 0 (= OFF); now floored to level 1.
+- **Serial reader death surfaces as unavailable.** When the link drops, entities now go unavailable (and any in-flight command fails fast) instead of showing stale state forever.
+- **v1 migration is scoped per system.** An Elegance entry no longer adopts JetStream v1 orphans (and vice versa) in a mixed install.
+- **eLite removed from the config flow.** It had no setup path and produced an entry that could never load.
+- **Config-flow import validation.** Out-of-range device IDs are rejected with a clear error; pasting unrecognized text (e.g. a `.jts` file, which is not supported yet) now errors instead of silently importing nothing.
+
+### Removed
+
+- **Dead "Append CR" option.** The integration cannot set the Elegance Customer Option bit over RS-232 (CR framing is a hard requirement, set in the Programming Software), so the toggle did nothing.
+
+### Changed
+
+- CI now runs `ruff` and the full `pytest` suite (previously only hassfest + HACS validation).
+- Test suite expanded to cover the coordinator, config/options flow, entities, full registry migration, and setup/unload via `pytest-homeassistant-custom-component`, plus regression tests for each fix above.
+
 ## [2.0.0a1] - 2026-05-24
 
 First alpha release of the v2 greenfield rewrite. Unifies the v1 Elegance and JetStream integrations into one HACS-compatible package.
