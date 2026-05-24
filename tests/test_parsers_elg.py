@@ -1,0 +1,197 @@
+"""Tests for the .elg INI parser."""
+
+from custom_components.centralite.parsers.elg import (
+    ElgConfig,
+    parse_csv_ids,
+    parse_elg,
+)
+
+
+def test_empty_input():
+    result = parse_elg("")
+    assert result == ElgConfig()
+
+
+def test_single_load_with_name():
+    text = """\
+[LOAD 001]
+  NAME=Upstairs Hall Recessed Lights
+  DIMMER=Y
+"""
+    result = parse_elg(text)
+    assert result.loads == {1: "Upstairs Hall Recessed Lights"}
+    assert result.scenes == {}
+
+
+def test_load_with_empty_name():
+    text = """\
+[LOAD 007]
+  NAME=
+  DIMMER=Y
+"""
+    result = parse_elg(text)
+    assert result.loads == {7: ""}
+
+
+def test_load_with_no_name_key():
+    text = """\
+[LOAD 099]
+  DIMMER=N
+"""
+    result = parse_elg(text)
+    assert result.loads == {99: ""}
+
+
+def test_scene_name_from_header():
+    text = """\
+[SCENE 04- Upstairs Path]
+  some body content
+[SCENE 09- Office Scene]
+"""
+    result = parse_elg(text)
+    assert result.scenes == {4: "Upstairs Path", 9: "Office Scene"}
+
+
+def test_combined_loads_and_scenes():
+    text = """\
+[LOAD 001]
+  NAME=Hall
+  DIMMER=Y
+
+[LOAD 002]
+  NAME=Master Bedroom
+
+[SCENE 04- Upstairs Path]
+
+[SCENE 99- Reload]
+"""
+    result = parse_elg(text)
+    assert result.loads == {1: "Hall", 2: "Master Bedroom"}
+    assert result.scenes == {4: "Upstairs Path", 99: "Reload"}
+
+
+def test_ignores_unknown_sections():
+    text = """\
+[Settings]
+[Multiple System]
+False
+
+[LOAD 001]
+  NAME=Hall
+
+[VISIBLE PANELS]
+8
+
+[Unknown Section]
+  some=value
+"""
+    result = parse_elg(text)
+    assert result.loads == {1: "Hall"}
+    assert result.scenes == {}
+
+
+def test_crlf_line_endings():
+    text = "[LOAD 001]\r\n  NAME=Hall\r\n"
+    result = parse_elg(text)
+    assert result.loads == {1: "Hall"}
+
+
+def test_scene_name_with_dashes():
+    text = "[SCENE 18- Jetstream - Send All Off Command]\n"
+    result = parse_elg(text)
+    assert result.scenes == {18: "Jetstream - Send All Off Command"}
+
+
+def test_real_world_excerpt():
+    # Stripped excerpt mirroring the actual .elg structure with its various quirks.
+    text = """\
+[CentraLite Elegance Data File]
+REV 1.1
+
+[Settings]
+
+[LOAD 001]
+  NAME=Upstairs Hall Recessed Lights
+  DIMMER=Y
+  ALL ON=Y
+  PRESET LEVEL=050
+
+[LOAD 002]
+  NAME=Upstairs West Rm - Closet Light
+  DIMMER=Y
+
+[LOAD 007]
+  NAME=
+  DIMMER=Y
+
+[SCENE 04- Upstairs Path]
+  body line one
+  body line two
+
+[SCENE 06- Great Room Scene 1]
+"""
+    result = parse_elg(text)
+    assert result.loads == {
+        1: "Upstairs Hall Recessed Lights",
+        2: "Upstairs West Rm - Closet Light",
+        7: "",
+    }
+    assert result.scenes == {
+        4: "Upstairs Path",
+        6: "Great Room Scene 1",
+    }
+
+
+# --- parse_csv_ids tests ---
+
+
+def test_csv_ids_empty():
+    assert parse_csv_ids("") == []
+    assert parse_csv_ids("   ") == []
+
+
+def test_csv_ids_basic():
+    assert parse_csv_ids("1,2,3") == [1, 2, 3]
+
+
+def test_csv_ids_with_whitespace():
+    assert parse_csv_ids("  1 , 2 ,  3 ") == [1, 2, 3]
+
+
+def test_csv_ids_deduplicates_and_sorts():
+    assert parse_csv_ids("3,1,2,1,3") == [1, 2, 3]
+
+
+def test_csv_ids_ignores_empty_tokens():
+    assert parse_csv_ids("1,,2,,,3") == [1, 2, 3]
+
+
+# --- Standalone smoke-test runner ---
+
+if __name__ == "__main__":
+    import sys
+    import traceback
+
+    tests = sorted(
+        (n, t) for n, t in dict(globals()).items()
+        if n.startswith("test_") and callable(t)
+    )
+
+    passed = 0
+    failed: list[tuple[str, str]] = []
+    for name, t in tests:
+        try:
+            t()
+        except Exception:
+            failed.append((name, traceback.format_exc()))
+        else:
+            passed += 1
+            print(f"OK  {name}")
+
+    print()
+    print(f"Passed: {passed}, Failed: {len(failed)}")
+    if failed:
+        for name, tb in failed:
+            print(f"\n--- FAIL: {name} ---")
+            print(tb)
+        sys.exit(1)
