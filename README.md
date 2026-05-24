@@ -50,7 +50,7 @@ The config flow has two steps:
 
 ### Step 1 — Bridge connection
 
-- **System type**: Elegance / JetStream / eLite (legacy)
+- **System type**: Elegance / JetStream
 - **Serial port**: e.g. `/dev/serial/by-id/usb-Prolific...` or `/dev/ttyUSB0`
 - **Baud rate**: defaults to 19200
 
@@ -69,8 +69,10 @@ After setup, you can edit any entity's display name via HA's standard entity-ren
 
 Once configured, **⋮ → Configure** on the integration:
 
-- **Safety-net poll interval** — how often to do a full `^G` query as a fallback for loads not configured for push notifications (default 300s; `0` disables)
-- **Append CR** — toggle Elegance Customer Option bit #6 (default on)
+- **Safety-net poll interval** — Elegance only: how often to do a full `^G` query as a fallback for loads not configured for push notifications (default 300s; `0` disables). JetStream has no bulk-state command and is push-only, so this setting has no effect there.
+
+> [!NOTE]
+> The bridge's "send CR after responses" Customer Option (Elegance bit #6) must be enabled in the Elegance Programming Software — the integration relies on CR-framed responses and cannot toggle this setting over RS-232.
 
 ## Migration from v1
 
@@ -100,19 +102,28 @@ When v2 first loads and detects v1 entities (by their `elegance.L001`/`jetstream
 
 Protocol reference docs are in [`docs/protocols/`](docs/protocols/) — manufacturer PDFs for both Elegance and JetStream, preserved here since CentraLite is no longer in business.
 
-Test suite runs without external dependencies:
+The pure protocol/parser/migration tests run without Home Assistant installed.
+Run them from the repo root with the repo on the import path:
 
 ```
-python tests/test_protocol_common.py
-python tests/test_protocol_elegance.py
-python tests/test_protocol_jetstream.py
-python tests/test_parsers_elg.py
-python tests/test_migrate.py
+PYTHONPATH=. python tests/test_protocol_common.py
+PYTHONPATH=. python tests/test_protocol_elegance.py
+PYTHONPATH=. python tests/test_protocol_jetstream.py
+PYTHONPATH=. python tests/test_parsers_elg.py
+PYTHONPATH=. python tests/test_migrate.py
 ```
 
-All 113 tests should pass.
+The integration tests (coordinator, config flow, entities, migration) need the
+Home Assistant test harness:
 
-Pytest with `pythonpath = ["."]` also works for those who prefer it.
+```
+pip install pytest-homeassistant-custom-component serialx
+pytest
+```
+
+`pyproject.toml` sets `pythonpath = ["."]`, so `pytest` from the repo root finds
+the package without `PYTHONPATH`. The standalone scripts above need it because
+they import `custom_components...` directly.
 
 ## License
 

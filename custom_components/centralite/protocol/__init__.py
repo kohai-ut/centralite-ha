@@ -51,6 +51,10 @@ class SceneEvent:
 LoadEventCallback = Callable[[LoadEvent], None]
 SwitchEventCallback = Callable[[SwitchEvent], None]
 SceneEventCallback = Callable[[SceneEvent], None]
+# Fired when the serial reader loop ends unexpectedly (cable pulled, adapter
+# removed, bridge power-cycled). The argument is the triggering exception, or
+# None if the stream simply hit EOF. Not fired on intentional disconnect().
+DisconnectCallback = Callable[["Exception | None"], None]
 
 
 class CentraliteProtocol(ABC):
@@ -133,6 +137,13 @@ class CentraliteProtocol(ABC):
         Only fires on bridges with supports_scene_push (JetStream).
         """
 
+    def set_disconnect_callback(self, cb: DisconnectCallback) -> None:
+        """Register a callback fired when the connection is lost unexpectedly.
+
+        Lets the coordinator mark entities unavailable instead of leaving them
+        showing stale state forever after the serial link drops.
+        """
+
     @property
     def supports_device_name_query(self) -> bool:
         return False
@@ -140,6 +151,17 @@ class CentraliteProtocol(ABC):
     @property
     def supports_scene_push(self) -> bool:
         return False
+
+    @property
+    def supports_bulk_query(self) -> bool:
+        """Whether the bridge can report every load's state in one command.
+
+        Elegance has ^G (all loads) and ^H (all switches). JetStream has
+        neither — it is push-only, reporting state via spontaneous DEV/ACT/SCN
+        output. The coordinator uses this to decide whether to prime initial
+        state and run the safety-net poll, or rely purely on push events.
+        """
+        return True
 
     @property
     @abstractmethod

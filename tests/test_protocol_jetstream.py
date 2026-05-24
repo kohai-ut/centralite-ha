@@ -259,31 +259,31 @@ async def test_ping_returns_true_on_hello():
         await p.disconnect()
 
 
-async def test_get_all_load_states_parses_bitmap():
-    p, reader, w = await _make_protocol()
+async def test_jetstream_has_no_bulk_query_capability():
+    """JetStream has no ^G/^H; it must advertise push-only state."""
+    p, _r, _w = await _make_protocol()
     try:
-        response = b"010100" + b"000000" * 7 + b"\r"
-        task = asyncio.create_task(_feed_after(reader, response))
-        state = await p.get_all_load_states()
-        assert state[1] is True
-        assert state[9] is True
-        assert sum(state.values()) == 2
-        assert bytes(w.buf) == b"^G"
-        await task
+        assert p.supports_bulk_query is False
     finally:
         await p.disconnect()
 
 
-async def test_get_all_switch_states_parses_bitmap():
-    p, reader, w = await _make_protocol()
+async def test_get_all_load_states_raises_not_supported():
+    """get_all_load_states must fail fast, not send ^G and wait for a timeout."""
+    p, _r, w = await _make_protocol()
     try:
-        response = b"0100" + b"0000" * 23 + b"\r"
-        task = asyncio.create_task(_feed_after(reader, response))
-        state = await p.get_all_switch_states()
-        assert state[1] is True
-        assert sum(state.values()) == 1
-        assert bytes(w.buf) == b"^H"
-        await task
+        await _expect_raises_async(ProtocolError, p.get_all_load_states())
+        # Crucially, it must NOT have written a ^G the bridge will ignore.
+        assert bytes(w.buf) == b""
+    finally:
+        await p.disconnect()
+
+
+async def test_get_all_switch_states_raises_not_supported():
+    p, _r, w = await _make_protocol()
+    try:
+        await _expect_raises_async(ProtocolError, p.get_all_switch_states())
+        assert bytes(w.buf) == b""
     finally:
         await p.disconnect()
 

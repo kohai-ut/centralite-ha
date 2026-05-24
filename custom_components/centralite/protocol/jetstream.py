@@ -26,11 +26,17 @@ import logging
 
 from . import LoadEvent, SceneEvent, SwitchEvent
 from ._base import _BaseSerialProtocol
-from .common import ProtocolError, parse_load_bitmap, parse_switch_bitmap
+from .common import ProtocolError
 
 _LOGGER = logging.getLogger(__name__)
 
-# Per docs/protocols/jetstream-rs232-bridge.pdf p.8
+# The third-party protocol table (jetstream-rs232-bridge.pdf p.8) documents the
+# device field "ddd" as 001-096, but the JetStream network supports up to ~200
+# devices (jetstream-installation-programming.pdf) and real installs address
+# higher numbers. We keep the permissive 199 bound: the bridge silently ignores
+# any device number it doesn't recognize, so an over-high bound costs nothing,
+# whereas an over-tight one would refuse to control legitimate devices.
+# Scenes are documented as 001-100.
 JETSTREAM_MAX_LOADS = 199
 JETSTREAM_MAX_SCENES = 100
 JETSTREAM_MAX_SWITCHES = 199
@@ -78,6 +84,13 @@ class JetStreamProtocol(_BaseSerialProtocol):
     def supports_scene_push(self) -> bool:
         return True
 
+    @property
+    def supports_bulk_query(self) -> bool:
+        # JetStream has no ^G/^H. The command table (jetstream-rs232-bridge.pdf
+        # p.8) offers only ^F (per-device level) for state; everything else
+        # arrives as spontaneous DEV/ACT/SCN output. State is push-only.
+        return False
+
     async def activate_load(self, idx: int) -> None:
         self._validate_load_idx(idx)
         await self._send(f"^A{idx:03d}")
@@ -109,11 +122,12 @@ class JetStreamProtocol(_BaseSerialProtocol):
             raise ProtocolError(f"Bad ^F response: {response!r}") from e
 
     async def get_all_load_states(self) -> dict[int, bool]:
-        def matches(line: str) -> bool:
-            return len(line) == 48 and all(c in "0123456789ABCDEFabcdef" for c in line)
-
-        response = await self._sendrecv("^G", matches=matches)
-        return parse_load_bitmap(response.strip())
+        # JetStream has no bulk load-state command (no ^G). Earlier code sent
+        # ^G and waited for a 48-hex Elegance-shaped reply that never comes,
+        # timing out after COMMAND_TIMEOUT on every call. The coordinator gates
+        # on supports_bulk_query (False here) and never calls this; the raise is
+        # a guard against a future caller reintroducing the timeout.
+        raise ProtocolError("JetStream has no bulk load-state query; state is push-only")
 
     async def activate_scene(self, idx: int) -> None:
         self._validate_scene_idx(idx)
@@ -159,11 +173,9 @@ class JetStreamProtocol(_BaseSerialProtocol):
         await self._send(f"^T{idx:03d}{button:02d}")
 
     async def get_all_switch_states(self) -> dict[int, bool]:
-        def matches(line: str) -> bool:
-            return len(line) == 96 and all(c in "0123456789ABCDEFabcdef" for c in line)
-
-        response = await self._sendrecv("^H", matches=matches)
-        return parse_switch_bitmap(response.strip())
+        # No ^H on JetStream either (see get_all_load_states). Button state
+        # arrives via spontaneous ACT events keyed (device, button).
+        raise ProtocolError("JetStream has no bulk switch-state query; state is push-only")
 
     async def get_device_name(self, idx: int) -> str | None:
         """Query the bridge for a device's stored friendly name (JetStream-only)."""

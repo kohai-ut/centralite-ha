@@ -16,9 +16,9 @@
       },
       "import": {
         "title": "Import names and device IDs",
-        "description": "Paste your {system} configuration export into the first field to bulk-import friendly names, scene names, and the list of devices to expose. Or enter comma-separated IDs in the other fields if you don't have an export file.",
+        "description": "Paste your Elegance .elg export into the first field to bulk-import friendly names, scene names, and the list of devices to expose. Or enter comma-separated IDs in the other fields if you don't have an export file. (JetStream .jts import is not supported yet — for JetStream, enter IDs manually; friendly names come from the bridge's on-device name query.)",
         "data": {
-          "elg_text": "Paste .elg / .jts file contents",
+          "elg_text": "Paste .elg file contents (Elegance only)",
           "load_ids_csv": "Additional load IDs (comma-separated)",
           "scene_ids_csv": "Additional scene IDs (comma-separated)",
           "switch_ids_csv": "Switch / button device IDs (comma-separated)"
@@ -29,7 +29,8 @@
       "already_configured": "This bridge is already configured."
     },
     "error": {
-      "import_failed": "Could not parse the provided configuration. Check the file contents or use the comma-separated fields instead."
+      "import_failed": "Could not parse the provided text as an Elegance .elg file. JetStream .jts files are not supported yet — enter IDs manually in the comma-separated fields instead.",
+      "ids_out_of_range": "One or more IDs are outside the valid range for the selected system. Check your load, scene, and switch IDs."
     }
   },
   "options": {
@@ -38,11 +39,10 @@
         "title": "Centralite options",
         "description": "Tune how the integration polls the bridge for state changes.",
         "data": {
-          "poll_interval": "Safety-net poll interval (seconds; 0 to disable)",
-          "append_cr": "Bridge sends carriage return after responses (Elegance Customer Option bit #6)"
+          "poll_interval": "Safety-net poll interval (seconds; 0 to disable)"
         },
         "data_description": {
-          "poll_interval": "How often to send a full ^G query to catch any state drift. Push events are the primary update path; this is a safety net for loads that aren't programmed for spontaneous output."
+          "poll_interval": "Elegance only: how often to send a full ^G query to catch any state drift. Push events are the primary update path; this is a safety net for loads that aren't programmed for spontaneous output. JetStream is push-only and ignores this setting."
         }
       }
     }
