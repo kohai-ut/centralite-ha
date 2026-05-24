@@ -315,6 +315,65 @@ async def test_command_timeout_raises_protocol_error():
         await p.disconnect()
 
 
+# --- Capability flags ---
+
+
+async def test_elegance_supports_bulk_query():
+    """Elegance has ^G/^H, so the coordinator primes + polls it."""
+    p, _r, _w = await _make_protocol()
+    try:
+        assert p.supports_bulk_query is True
+    finally:
+        await p.disconnect()
+
+
+# --- Reader death / disconnect notification (shared _base behavior) ---
+
+
+async def test_reader_death_fires_disconnect_callback():
+    """When the serial stream errors, the disconnect callback must fire once."""
+    p, reader, _w = await _make_protocol()
+    try:
+        seen: list[Exception | None] = []
+        p.set_disconnect_callback(seen.append)
+        # feed_eof makes the next readexactly raise IncompleteReadError.
+        reader.feed_eof()
+        await asyncio.sleep(0.02)
+        assert len(seen) == 1
+    finally:
+        await p.disconnect()
+
+
+async def test_reader_death_fails_pending_request_fast():
+    """A command in flight when the link drops must fail immediately, not hang."""
+    p, reader, _w = await _make_protocol()
+    try:
+        async def kill_after():
+            await asyncio.sleep(0.01)
+            reader.feed_eof()
+
+        task = asyncio.create_task(kill_after())
+        # No response is fed; without the disconnect path this would wait the
+        # full 2s COMMAND_TIMEOUT. It should raise well under that.
+        start = asyncio.get_event_loop().time()
+        await _expect_raises_async(ProtocolError, p.get_load_level(1))
+        elapsed = asyncio.get_event_loop().time() - start
+        assert elapsed < 1.0, f"expected fast failure, took {elapsed:.2f}s"
+        await task
+    finally:
+        await p.disconnect()
+
+
+async def test_intentional_disconnect_does_not_fire_callback():
+    """disconnect() cancels the reader; that is not a fault and must stay quiet."""
+    p, _r, _w = await _make_protocol()
+    seen: list[Exception | None] = []
+    p.set_disconnect_callback(seen.append)
+    await p.disconnect()
+    await asyncio.sleep(0.02)
+    assert seen == []
+
+
 # --- BCD clock helpers (sync) ---
 
 

@@ -5,7 +5,7 @@ The full async_migrate_entries function depends on HA's entity_registry
 and is exercised only when the integration is loaded in a real HA env.
 """
 
-from custom_components.centralite.migrate import MigrationResult, classify
+from custom_components.centralite.migrate import classify
 
 
 def _expect_migrate(uid: str, suffix: str) -> None:
