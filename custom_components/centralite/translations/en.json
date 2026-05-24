@@ -47,5 +47,10 @@
       }
     }
   },
-  "issues": {}
+  "issues": {
+    "v1_migration": {
+      "title": "Centralite v1 entities were migrated",
+      "description": "Your previous Centralite integration's entities have been adopted into the new v2 integration:\n\n- {migrated_count} entities were renamed to the v2 unique_id format (areas, aliases, icons, and dashboard placements were preserved).\n- {deleted_count} obsolete entities were removed (scene `-OFF` entities are no longer separate; they are absorbed into a single scene switch).\n\n**You may need to update automations or dashboards** that referenced the old entity IDs. Home Assistant does not automatically rewrite YAML automation files.\n\nMigration log:\n\n{summary}"
+    }
+  }
 }

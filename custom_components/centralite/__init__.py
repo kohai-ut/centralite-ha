@@ -52,6 +52,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Unknown system_type %r", system_type)
         return False
 
+    # One-time migration of v1 unique_ids (idempotent; safe on every load).
+    from .migrate import async_migrate_entries
+
+    await async_migrate_entries(hass, entry)
+
     coordinator = CentraliteCoordinator(hass, entry, protocol)
     try:
         await coordinator.async_init()
