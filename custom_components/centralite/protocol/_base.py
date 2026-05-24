@@ -36,6 +36,15 @@ COMMAND_TIMEOUT = 2.0
 READ_MAX_BUFFER = 100
 CR = 0x0D
 
+# Inter-command delay: a brief pause after each write before releasing the
+# transmit lock. The v1 JetStream integration discovered that without this,
+# back-to-back commands to the JetStream bridge would return responses
+# correlated to only the LAST command (the bridge or the USB-to-serial
+# adapter loses the earlier ones). Possibly USB-adapter-specific, possibly
+# a JetStream firmware quirk; the user couldn't isolate it but 100ms made
+# the symptom go away. Subclasses override the default per system.
+DEFAULT_INTER_COMMAND_DELAY = 0.0
+
 TransportFactory = "Callable[[str, int], Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]]]"
 LineMatcher = "Callable[[str], bool]"
 
@@ -58,16 +67,21 @@ def _match_any(_line: str) -> bool:
 class _BaseSerialProtocol(CentraliteProtocol):
     """Shared serial transport + reader-loop + sendrecv machinery."""
 
+    inter_command_delay: float = DEFAULT_INTER_COMMAND_DELAY
+
     def __init__(
         self,
         url: str,
         *,
         baudrate: int = DEFAULT_BAUDRATE,
         transport_factory: TransportFactory | None = None,
+        inter_command_delay: float | None = None,
     ) -> None:
         self._url = url
         self._baudrate = baudrate
         self._transport_factory = transport_factory or _default_transport
+        if inter_command_delay is not None:
+            self.inter_command_delay = inter_command_delay
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -112,6 +126,8 @@ class _BaseSerialProtocol(CentraliteProtocol):
             _LOGGER.debug("send: %r", command)
             self._writer.write(command.encode("ascii"))
             await self._writer.drain()
+            if self.inter_command_delay > 0:
+                await asyncio.sleep(self.inter_command_delay)
 
     async def _sendrecv(
         self,
@@ -141,6 +157,8 @@ class _BaseSerialProtocol(CentraliteProtocol):
                 except asyncio.TimeoutError as e:
                     raise ProtocolError(f"Timeout waiting for response to {command!r}") from e
                 _LOGGER.debug("recv: %r", response)
+                if self.inter_command_delay > 0:
+                    await asyncio.sleep(self.inter_command_delay)
                 return response
             finally:
                 self._pending = None

@@ -36,6 +36,13 @@ JETSTREAM_MAX_SCENES = 100
 JETSTREAM_MAX_SWITCHES = 199
 JETSTREAM_MAX_BUTTONS_PER_SWITCH = 3
 
+# The v1 JetStream integration discovered that back-to-back commands caused
+# the bridge to return all responses correlated to only the last command.
+# A ~100ms pause between commands made the symptom disappear. Possibly a
+# USB-to-serial-adapter quirk, possibly a JetStream firmware quirk. Either
+# way, preserving the workaround.
+JETSTREAM_INTER_COMMAND_DELAY = 0.1
+
 DEV_PREFIX = "DEV"
 ACT_PREFIX = "ACT"
 SCN_PREFIX = "SCN"
@@ -52,6 +59,8 @@ _ACTION_MAP = {"T": "tap", "P": "press", "R": "release"}
 
 class JetStreamProtocol(_BaseSerialProtocol):
     """Async JetStream bridge protocol."""
+
+    inter_command_delay = JETSTREAM_INTER_COMMAND_DELAY
 
     @property
     def max_loads(self) -> int:
@@ -136,7 +145,15 @@ class JetStreamProtocol(_BaseSerialProtocol):
         await self._send(f"^R{idx:03d}{button:02d}")
 
     async def tap_switch(self, idx: int, *, button: int = 1) -> None:
-        """JetStream ^T: simulate a complete tap (press+release in one command)."""
+        """JetStream ^T: simulate a complete tap (press+release in one command).
+
+        Historical note: v1 sent ^T followed immediately by ^R, which the
+        user observed caused brightness on the affected load to drop to 1.
+        Likely root cause was the missing inter-command delay (see
+        JETSTREAM_INTER_COMMAND_DELAY). We only send ^T here; the
+        ^P+^R press/release path is the one with the auto-release pair,
+        and it respects the inter-command delay between writes.
+        """
         self._validate_switch_idx(idx)
         self._validate_button_idx(button)
         await self._send(f"^T{idx:03d}{button:02d}")

@@ -65,6 +65,15 @@ def _expect_raises(exc_type, fn, *args, **kwargs):
 # --- Command-sends-correct-bytes tests ---
 
 
+async def test_elegance_has_no_inter_command_delay_by_default():
+    """Elegance v1 did not need the delay workaround that JetStream did."""
+    p, _r, _w = await _make_protocol()
+    try:
+        assert p.inter_command_delay == 0.0
+    finally:
+        await p.disconnect()
+
+
 async def test_activate_load_sends_correct_bytes():
     p, _r, w = await _make_protocol()
     try:

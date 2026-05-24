@@ -64,6 +64,53 @@ async def test_capability_flags():
         await p.disconnect()
 
 
+async def test_jetstream_has_inter_command_delay():
+    """v1 discovered back-to-back commands corrupted responses; v2 preserves the workaround."""
+    from custom_components.centralite.protocol.jetstream import (
+        JETSTREAM_INTER_COMMAND_DELAY,
+        JetStreamProtocol,
+    )
+    p = JetStreamProtocol("test://")
+    assert p.inter_command_delay == JETSTREAM_INTER_COMMAND_DELAY
+    assert p.inter_command_delay > 0
+
+
+async def test_jetstream_inter_command_delay_can_be_overridden():
+    p, _r, _w = await _make_protocol()
+    try:
+        # _make_protocol uses the default factory; verify the default
+        assert p.inter_command_delay == 0.1
+    finally:
+        await p.disconnect()
+
+    # Now construct with an override
+    from custom_components.centralite.protocol.jetstream import JetStreamProtocol
+
+    async def factory(url, baudrate):
+        return asyncio.StreamReader(), _FakeWriter()
+
+    p2 = JetStreamProtocol("test://", transport_factory=factory, inter_command_delay=0.5)
+    assert p2.inter_command_delay == 0.5
+
+
+async def test_inter_command_delay_actually_applies():
+    """A ~100ms delay should be observable in elapsed time when sending two commands."""
+    import time
+
+    p, _r, w = await _make_protocol()
+    try:
+        # Two sends should take at least 2 * 0.1s = 0.2s due to the delay
+        start = time.monotonic()
+        await p.activate_load(1)
+        await p.activate_load(2)
+        elapsed = time.monotonic() - start
+        # Allow a generous lower bound (some implementations may have small clock skew)
+        assert elapsed >= 0.18, f"expected >=0.18s elapsed, got {elapsed:.3f}s"
+        assert bytes(w.buf) == b"^A001^A002"
+    finally:
+        await p.disconnect()
+
+
 # --- Send-only commands ---
 
 
