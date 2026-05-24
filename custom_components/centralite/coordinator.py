@@ -12,8 +12,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.core import callback
 from homeassistant.helpers.event import async_call_later
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     CONF_SYSTEM_TYPE,
@@ -61,6 +62,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         protocol.set_load_event_callback(self._on_load_event)
         protocol.set_switch_event_callback(self._on_switch_event)
         protocol.set_scene_event_callback(self._on_scene_event)
+        protocol.set_disconnect_callback(self._on_disconnect)
 
     @property
     def system_label(self) -> str:
@@ -71,18 +73,26 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.config_entry.title or f"Centralite {self.system_label}"
 
     async def async_init(self) -> None:
-        """Open the bridge connection and prime initial state."""
+        """Open the bridge connection and prime initial state.
+
+        Bridges with a bulk-state command (Elegance ^G) are primed once at
+        startup and then polled as a safety net. Push-only bridges (JetStream)
+        have no bulk command, so we skip both and rely entirely on spontaneous
+        DEV/ACT/SCN events — calling get_all_load_states there would just time
+        out on every attempt.
+        """
         await self.protocol.connect()
-        try:
-            load_states = await self.protocol.get_all_load_states()
-        except Exception:
-            _LOGGER.warning(
-                "Initial bulk load query failed; relying on push events",
-                exc_info=True,
-            )
-        else:
-            for idx, on in load_states.items():
-                self.data["loads"][idx] = {"on": on, "level": 99 if on else 0}
+        if self.protocol.supports_bulk_query:
+            try:
+                load_states = await self.protocol.get_all_load_states()
+            except Exception:
+                _LOGGER.warning(
+                    "Initial bulk load query failed; relying on push events",
+                    exc_info=True,
+                )
+            else:
+                for idx, on in load_states.items():
+                    self.data["loads"][idx] = {"on": on, "level": 99 if on else 0}
 
         self._schedule_safety_poll()
 
@@ -124,7 +134,26 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.data["scenes"][event.idx] = event.active
         self.async_set_updated_data(self.data)
 
+    @callback
+    def _on_disconnect(self, error: Exception | None) -> None:
+        """Mark all entities unavailable when the serial link drops.
+
+        async_set_update_error flips last_update_success to False and notifies
+        listeners, so every entity goes unavailable instead of showing stale
+        state. A reconnect path (re-open + re-prime) is future work; for now the
+        user gets an honest "unavailable" and the integration can be reloaded.
+        """
+        _LOGGER.warning("Centralite bridge connection lost: %s", error)
+        self.async_set_update_error(
+            UpdateFailed(f"Centralite bridge connection lost: {error}")
+        )
+
     def _schedule_safety_poll(self) -> None:
+        # The safety poll uses the bulk-state command. Push-only bridges
+        # (JetStream) have none, so there is nothing to poll — skip it rather
+        # than scheduling a callback that raises every interval.
+        if not self.protocol.supports_bulk_query:
+            return
         interval = self.config_entry.options.get(OPT_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         if not interval:
             return

@@ -16,18 +16,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
 
 from . import (
     CentraliteProtocol,
+    DisconnectCallback,
     LoadEventCallback,
     SceneEventCallback,
     SwitchEventCallback,
 )
 from .common import ProtocolError
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,8 +43,10 @@ CR = 0x0D
 # the symptom go away. Subclasses override the default per system.
 DEFAULT_INTER_COMMAND_DELAY = 0.0
 
-TransportFactory = "Callable[[str, int], Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]]]"
-LineMatcher = "Callable[[str], bool]"
+TransportFactory = Callable[
+    [str, int], Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]]
+]
+LineMatcher = Callable[[str], bool]
 
 
 async def _default_transport(
@@ -90,6 +90,7 @@ class _BaseSerialProtocol(CentraliteProtocol):
         self._load_event_cb: LoadEventCallback | None = None
         self._switch_event_cb: SwitchEventCallback | None = None
         self._scene_event_cb: SceneEventCallback | None = None
+        self._disconnect_cb: DisconnectCallback | None = None
 
     async def connect(self) -> None:
         self._reader, self._writer = await self._transport_factory(self._url, self._baudrate)
@@ -118,6 +119,9 @@ class _BaseSerialProtocol(CentraliteProtocol):
 
     def set_scene_event_callback(self, cb: SceneEventCallback) -> None:
         self._scene_event_cb = cb
+
+    def set_disconnect_callback(self, cb: DisconnectCallback) -> None:
+        self._disconnect_cb = cb
 
     async def _send(self, command: str) -> None:
         if self._writer is None:
@@ -169,15 +173,36 @@ class _BaseSerialProtocol(CentraliteProtocol):
             try:
                 line = await self._read_line()
             except asyncio.CancelledError:
+                # Intentional shutdown via disconnect(); not a fault.
                 return
-            except (asyncio.IncompleteReadError, OSError, ConnectionError):
-                _LOGGER.exception("Reader error; ending loop")
+            except (asyncio.IncompleteReadError, OSError, ConnectionError) as e:
+                _LOGGER.error("Serial reader error; connection lost: %s", e)
+                self._notify_disconnect(e)
                 return
             except Exception:
                 _LOGGER.exception("Unexpected reader error")
                 continue
             if line:
                 self._dispatch(line)
+
+    def _notify_disconnect(self, error: Exception | None) -> None:
+        """Tell anyone waiting that the link dropped.
+
+        Fails the in-flight request (so a command issued just as the cable was
+        pulled fails fast instead of waiting the full COMMAND_TIMEOUT) and fires
+        the disconnect callback so the coordinator can mark entities
+        unavailable.
+        """
+        if self._pending is not None:
+            future, _ = self._pending
+            if not future.done():
+                future.set_exception(ProtocolError(f"Connection lost: {error}"))
+        cb = self._disconnect_cb
+        if cb is not None:
+            try:
+                cb(error)
+            except Exception:
+                _LOGGER.exception("Disconnect callback failed")
 
     async def _read_line(self) -> str:
         assert self._reader is not None

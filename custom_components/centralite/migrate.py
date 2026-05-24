@@ -12,11 +12,14 @@ unique_ids in the legacy format:
     jetstream.JSL001      (light)
     jetstream.JSSW04401   (button device 044, button 01)
     jetstream.scene4ON / OFF
-    centralite.l001       (older lowercase variants)
 
-This module scans the registry for those patterns, renames them to the
-v2 unique_id scheme ({entry_id}_load_001, etc.), and removes the now-
-redundant scene*OFF entries. The function is idempotent — subsequent
+Lowercase variants (elegance.l001, JETSTREAM.JSL001) are handled too;
+the rules are case-insensitive.
+
+This module scans the registry for those patterns, scoped to the entry's
+own system (an Elegance entry only adopts elegance.* orphans, a JetStream
+entry only jetstream.*), renames them to the v2 unique_id scheme
+({entry_id}_load_001, etc.), and removes the now-redundant scene*OFF entries. The function is idempotent — subsequent
 runs find nothing because migrated entries are no longer orphans and
 already use the new format.
 
@@ -37,7 +40,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from .const import DOMAIN
+from .const import CONF_SYSTEM_TYPE, DOMAIN
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -139,8 +142,19 @@ async def async_migrate_entries(hass: HomeAssistant, entry: ConfigEntry) -> None
     migrated: list[tuple[str, str, str]] = []
     deleted: list[tuple[str, str]] = []
 
+    # Only adopt orphans belonging to THIS entry's system. The v1 unique_id
+    # prefix ("elegance." / "jetstream.") encodes the system and matches
+    # CONF_SYSTEM_TYPE exactly. Without this, in a mixed Elegance + JetStream
+    # household the first v2 entry to load would adopt both systems' v1
+    # entities, attaching JetStream lights to an Elegance bridge (and vice
+    # versa). Already-migrated entries have config_entry_id set, so they are
+    # excluded regardless.
+    system_prefix = f"{entry.data[CONF_SYSTEM_TYPE]}.".lower()
     candidates = [
-        ent for ent in list(registry.entities.values()) if ent.config_entry_id is None
+        ent
+        for ent in list(registry.entities.values())
+        if ent.config_entry_id is None
+        and ent.unique_id.lower().startswith(system_prefix)
     ]
 
     for ent in candidates:

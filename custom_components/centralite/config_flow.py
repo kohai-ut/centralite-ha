@@ -10,7 +10,6 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
-    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -33,23 +32,61 @@ from .const import (
     DEFAULT_BAUD,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
-    OPT_APPEND_CR,
     OPT_LOAD_NAMES,
     OPT_POLL_INTERVAL,
     OPT_SCENE_NAMES,
     SYSTEM_ELEGANCE,
-    SYSTEM_ELITE,
     SYSTEM_JETSTREAM,
     SYSTEM_LABELS,
 )
 from .parsers.elg import parse_csv_ids, parse_elg
+from .protocol.common import MAX_LOADS as ELEGANCE_MAX_LOADS
+from .protocol.common import MAX_SWITCHES as ELEGANCE_MAX_SWITCHES
+from .protocol.elegance import MAX_SCENES as ELEGANCE_MAX_SCENES
+from .protocol.jetstream import (
+    JETSTREAM_MAX_LOADS,
+    JETSTREAM_MAX_SCENES,
+    JETSTREAM_MAX_SWITCHES,
+)
+
+# Valid ID ranges per system, used to reject out-of-range IDs at config time
+# instead of letting them become entities that silently fail on first command.
+_SYSTEM_LIMITS: dict[str, dict[str, int]] = {
+    SYSTEM_ELEGANCE: {
+        "load": ELEGANCE_MAX_LOADS,
+        "scene": ELEGANCE_MAX_SCENES,
+        "switch": ELEGANCE_MAX_SWITCHES,
+    },
+    SYSTEM_JETSTREAM: {
+        "load": JETSTREAM_MAX_LOADS,
+        "scene": JETSTREAM_MAX_SCENES,
+        "switch": JETSTREAM_MAX_SWITCHES,
+    },
+}
+
+
+class _IdRangeError(ValueError):
+    """An imported/entered ID falls outside the valid range for the system."""
+
+
+def _check_range(kind: str, ids: set[int], system_type: str) -> None:
+    """Raise _IdRangeError if any id is <1 or above the system's max for kind."""
+    limit = _SYSTEM_LIMITS[system_type][kind]
+    bad = sorted(i for i in ids if i < 1 or i > limit)
+    if bad:
+        raise _IdRangeError(
+            f"{kind} IDs out of range 1-{limit} for {system_type}: {bad}"
+        )
 
 _LOGGER = logging.getLogger(__name__)
 
+# Only systems with a working setup path in __init__.async_setup_entry belong
+# here. eLite (SYSTEM_ELITE) is reserved in const.py but has no protocol
+# implementation yet; offering it would let a user create an entry that can
+# never load. Add it back the moment EliteProtocol exists.
 SYSTEM_OPTIONS = [
     {"value": SYSTEM_ELEGANCE, "label": "Centralite Elegance"},
     {"value": SYSTEM_JETSTREAM, "label": "Centralite JetStream"},
-    {"value": SYSTEM_ELITE, "label": "Centralite eLite (legacy)"},
 ]
 
 _PORT_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.TEXT))
@@ -127,6 +164,12 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 elg_text = user_input.get("elg_text", "").strip()
                 if elg_text:
                     cfg = parse_elg(elg_text)
+                    if not cfg.loads and not cfg.scenes:
+                        # Non-empty paste that yielded nothing: not a recognized
+                        # Elegance .elg file. Most likely a JetStream .jts export
+                        # (not supported yet) or the wrong file. Tell the user
+                        # rather than silently importing zero devices.
+                        raise ValueError("unrecognized import text")
                     for idx, name in cfg.loads.items():
                         load_ids.add(idx)
                         if name:
@@ -139,6 +182,11 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 load_ids.update(parse_csv_ids(user_input.get("load_ids_csv", "")))
                 scene_ids.update(parse_csv_ids(user_input.get("scene_ids_csv", "")))
                 switch_ids.update(parse_csv_ids(user_input.get("switch_ids_csv", "")))
+
+                system_type = self._data[CONF_SYSTEM_TYPE]
+                _check_range("load", load_ids, system_type)
+                _check_range("scene", scene_ids, system_type)
+                _check_range("switch", switch_ids, system_type)
 
                 self._data[CONF_LOAD_IDS] = sorted(load_ids)
                 self._data[CONF_SCENE_IDS] = sorted(scene_ids)
@@ -156,6 +204,9 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=title, data=self._data, options=self._options
                 )
+            except _IdRangeError:
+                _LOGGER.warning("Import rejected: ID out of range", exc_info=True)
+                errors["base"] = "ids_out_of_range"
             except ValueError:
                 _LOGGER.exception("Import failed")
                 errors["base"] = "import_failed"
@@ -172,14 +223,15 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        return CentraliteOptionsFlow(config_entry)
+        return CentraliteOptionsFlow()
 
 
 class CentraliteOptionsFlow(OptionsFlow):
-    """Edit poll interval, append-CR, and other tunables post-setup."""
+    """Edit the safety-net poll interval post-setup.
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+    `self.config_entry` is provided by Home Assistant; assigning it here (as
+    older code did) raises on HA 2024.11+ where it became a read-only property.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -188,7 +240,6 @@ class CentraliteOptionsFlow(OptionsFlow):
             # Merge with existing options (preserving name dicts)
             merged = dict(self.config_entry.options)
             merged[OPT_POLL_INTERVAL] = int(user_input[OPT_POLL_INTERVAL])
-            merged[OPT_APPEND_CR] = bool(user_input[OPT_APPEND_CR])
             return self.async_create_entry(title="", data=merged)
 
         cur = self.config_entry.options
@@ -200,9 +251,6 @@ class CentraliteOptionsFlow(OptionsFlow):
                 ): NumberSelector(
                     NumberSelectorConfig(min=0, max=3600, step=1, mode=NumberSelectorMode.BOX)
                 ),
-                vol.Optional(
-                    OPT_APPEND_CR, default=cur.get(OPT_APPEND_CR, True)
-                ): BooleanSelector(),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

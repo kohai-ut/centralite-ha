@@ -32,7 +32,6 @@ OPT_LOAD_NAMES: Final = "load_names"
 OPT_SWITCH_NAMES: Final = "switch_names"
 OPT_SCENE_NAMES: Final = "scene_names"
 OPT_POLL_INTERVAL: Final = "poll_interval"
-OPT_APPEND_CR: Final = "append_cr"
 
 # Defaults
 DEFAULT_BAUD: Final = 19200

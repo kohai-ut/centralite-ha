@@ -59,7 +59,10 @@ class CentraliteLight(CentraliteBaseEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         if ATTR_BRIGHTNESS in kwargs:
-            level = int(kwargs[ATTR_BRIGHTNESS] / 255 * 99)
+            # Floor at 1: turn_on with a low brightness must never round down to
+            # level 0, which the bridge treats as OFF. A user asking for the
+            # dimmest possible light should get the dimmest light, not darkness.
+            level = max(1, round(kwargs[ATTR_BRIGHTNESS] / 255 * 99))
             await self.coordinator.protocol.set_load_level(self._idx, level)
         else:
             await self.coordinator.protocol.activate_load(self._idx)
