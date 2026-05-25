@@ -42,6 +42,7 @@ from .const import (
     SYSTEM_LABELS,
 )
 from .parsers.elg import parse_csv_ids, parse_elg
+from .parsers.jts import parse_jts
 from .protocol.common import MAX_LOADS as ELEGANCE_MAX_LOADS
 from .protocol.common import MAX_SWITCHES as ELEGANCE_MAX_SWITCHES
 from .protocol.elegance import MAX_SCENES as ELEGANCE_MAX_SCENES
@@ -165,13 +166,28 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 nondimmable: set[int] = set()
                 disabled: set[int] = set()
 
-                elg_text = user_input.get("elg_text", "").strip()
-                if elg_text:
-                    cfg = parse_elg(elg_text)
+                import_text = user_input.get("elg_text", "").strip()
+                if import_text and import_text.lstrip().startswith("<"):
+                    # XML => JetStream .jts. Every device in a .jts is real
+                    # (no phantom slots), so all are created and enabled.
+                    jts = parse_jts(import_text)
+                    if not jts.loads and not jts.scenes:
+                        raise ValueError("unrecognized import text")
+                    for idx, name in jts.loads.items():
+                        load_ids.add(idx)
+                        if name:
+                            load_names[str(idx)] = name
+                        if not jts.dimmable.get(idx, True):
+                            nondimmable.add(idx)
+                    for idx, name in jts.scenes.items():
+                        scene_ids.add(idx)
+                        if name:
+                            scene_names[str(idx)] = name
+                elif import_text:
+                    cfg = parse_elg(import_text)
                     if not cfg.loads and not cfg.scenes:
                         # Non-empty paste that yielded nothing: not a recognized
-                        # Elegance .elg file. Most likely a JetStream .jts export
-                        # (not supported yet) or the wrong file. Tell the user
+                        # Elegance .elg file or the wrong file. Tell the user
                         # rather than silently importing zero devices.
                         raise ValueError("unrecognized import text")
                     # A .elg lists all 192 load slots, most unnamed/unused. Create

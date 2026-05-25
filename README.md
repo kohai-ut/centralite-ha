@@ -18,7 +18,7 @@ CentraLite Systems made commercial lighting controllers that talk to switches an
 | System | Bridge | Notes |
 |---|---|---|
 | Centralite Elegance | RS-232 bridge (single-system, multi-system planned) | Up to 192 loads, 384 switches, 256 scenes |
-| Centralite JetStream | RS-232 bridge | Up to ~199 loads, ~199 switches × 3 buttons, 100 scenes; supports on-device name query |
+| Centralite JetStream | RS-232 bridge | Up to ~199 loads, ~199 switches × 3 buttons, 100 scenes; `.jts` config import |
 
 A 19200-baud USB-to-serial adapter on the HA host (Raspberry Pi, NUC, VM) plugs into the bridge's RS-232 port. `/dev/serial/by-id/...` paths are recommended for stability across reboots.
 
@@ -40,10 +40,9 @@ In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not
 - **Async serial** via the HA-blessed [`serialx`](https://github.com/home-assistant-libs/serialx) library
 - **Push-primary updates** with an optional safety-net `^G` poll for loads not programmed for spontaneous output
 - **One switch per scene** — no more `-ON`/`-OFF` entity pairs (v1 limitation removed)
-- **Bulk friendly-name import** from your Centralite `.elg` (Elegance) export
-- **Load-type aware** — loads marked non-dimmable in your `.elg` are exposed as on/off lights, not fake dimmers with a slider that does nothing
-- **Skips unused load slots** — a `.elg` lists all 192 load slots, most of them empty defaults. Only loads that are named or used in a scene/keypad become entities; referenced-but-unnamed loads are created disabled (enable them anytime in HA), and unused slots are skipped entirely
-- **JetStream on-device name query** via the bridge's `^N` command — no PC config file needed
+- **Config import** — bulk-import friendly names, scenes, and the device list from your Centralite `.elg` (Elegance) or `.jts` (JetStream) export
+- **Load-type aware** — loads marked non-dimmable in your config are exposed as on/off lights, not fake dimmers with a slider that does nothing
+- **Skips unused load slots (Elegance)** — a `.elg` lists all 192 load slots, most of them empty defaults. Only loads that are named or used in a scene/keypad become entities; referenced-but-unnamed loads are created disabled (enable them anytime in HA), and unused slots are skipped entirely. (A `.jts` lists only real devices, so nothing to skip there.)
 - **DeviceInfo + has_entity_name** — single device card with all entities grouped underneath, names auto-compose
 - **HACS-compatible** — install as a custom repository (default-listing planned once stable)
 - **One-time migration from v1** — preserves areas, aliases, icons, and dashboard placements
@@ -72,7 +71,7 @@ The config flow has two steps:
 
 You have two options for telling HA which loads/scenes/switches you have and what they're named:
 
-- **Paste your `.elg` (Elegance) or `.jts` (JetStream) config file** — the integration parses your friendly names and the list of configured loads and scenes automatically. Export `.elg` from the Centralite Elegance Programming Software; export `.jts` from JetStream Designer. (`.jts` import is on the roadmap; for JetStream right now use the on-device `^N` query — names come from the bridge itself.)
+- **Paste your `.elg` (Elegance) or `.jts` (JetStream) config file** — the integration parses your friendly names and the list of configured loads and scenes automatically. Export `.elg` from the Centralite Elegance Programming Software; export `.jts` from JetStream Designer. (For JetStream, only devices set to report third-party output are imported, since the others can't be observed over RS-232. Physical keypad buttons aren't imported as entities yet.)
 - **Or enter comma-separated IDs** for loads, scenes, switches if you don't have an export file. Friendly names can be set per-entity in HA's UI afterwards.
 
 Both paths can be combined.
@@ -124,6 +123,7 @@ PYTHONPATH=. python tests/test_protocol_common.py
 PYTHONPATH=. python tests/test_protocol_elegance.py
 PYTHONPATH=. python tests/test_protocol_jetstream.py
 PYTHONPATH=. python tests/test_parsers_elg.py
+PYTHONPATH=. python tests/test_parsers_jts.py
 PYTHONPATH=. python tests/test_migrate.py
 ```
 

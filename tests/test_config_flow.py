@@ -114,6 +114,39 @@ async def test_manual_load_ids_always_enabled(hass):
     assert CONF_DISABLED_LOADS not in result["data"]  # explicit entry => enabled
 
 
+async def test_jts_import_jetstream(hass):
+    """Pasting a JetStream .jts populates loads (with names + dimmable) and scenes."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_SYSTEM_TYPE: "jetstream", CONF_PORT: "/dev/ttyUSB0", CONF_BAUD: 19200},
+    )
+    assert result["step_id"] == "import"
+    jts = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<GulfStreamCL><DeviceList>"
+        "<Device><DeviceID>2</DeviceID><Name>Game Cans</Name>"
+        "<Dimmer>true</Dimmer><SendThirdParty>true</SendThirdParty><Active>true</Active></Device>"
+        "<Device><DeviceID>3</DeviceID><Name>Hall Relay</Name>"
+        "<Dimmer>false</Dimmer><SendThirdParty>true</SendThirdParty><Active>true</Active></Device>"
+        "</DeviceList><SceneList>"
+        "<Scene><ID>1</ID><Name>All On</Name></Scene>"
+        "</SceneList></GulfStreamCL>"
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": jts, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_LOAD_IDS] == [2, 3]
+    assert result["data"][CONF_SCENE_IDS] == [1]
+    assert result["options"][OPT_LOAD_NAMES] == {"2": "Game Cans", "3": "Hall Relay"}
+    assert result["options"][OPT_NONDIMMABLE_LOADS] == [3]  # Dimmer=false
+    assert CONF_DISABLED_LOADS not in result["data"]  # .jts devices are all real
+
+
 async def test_csv_only_flow(hass):
     result = await _advance_to_import(hass)
     result = await hass.config_entries.flow.async_configure(
