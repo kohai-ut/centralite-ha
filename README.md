@@ -45,6 +45,7 @@ In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not
 - **Load-type aware** — loads marked non-dimmable in your config are exposed as on/off lights, not fake dimmers with a slider that does nothing
 - **Skips unused load slots (Elegance)** — a `.elg` lists all 192 load slots, most of them empty defaults. Only loads that are named or used in a scene/keypad become entities; referenced-but-unnamed loads are created disabled (enable them anytime in HA), and unused slots are skipped entirely. (A `.jts` lists only real devices, so nothing to skip there.)
 - **Device triggers for keypad buttons** — physical button presses (JetStream tap/press/release; Elegance press/release) fire HA device triggers, so automations can run on a wall-switch press. The raw `centralite_event` bus event is also available for any button.
+- **Sync Clock button (Elegance)** — a button entity that sets the bridge's real-time clock to HA's current time, so the panel's time-of-day schedules stay aligned. Automate the press (e.g. nightly) to correct clock drift. (JetStream has no clock command, so the button only appears on Elegance.)
 - **DeviceInfo + has_entity_name** — single device card with all entities grouped underneath, names auto-compose
 - **HACS-compatible** — install as a custom repository (default-listing planned once stable)
 - **One-time migration from v1** — preserves areas, aliases, icons, and dashboard placements

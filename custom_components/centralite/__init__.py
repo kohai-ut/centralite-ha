@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Plain strings so this constant doesn't require importing the Platform enum
 # at module load (which would force a homeassistant import).
-PLATFORMS: list[str] = ["light", "switch"]
+PLATFORMS: list[str] = ["button", "light", "switch"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

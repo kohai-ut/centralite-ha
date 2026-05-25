@@ -89,6 +89,10 @@ class EleganceProtocol(_BaseSerialProtocol):
     def max_switches(self) -> int:
         return MAX_SWITCHES
 
+    @property
+    def supports_clock(self) -> bool:
+        return True
+
     async def activate_load(self, idx: int) -> None:
         self._validate_load_idx(idx)
         await self._send(f"^A{idx:03d}")

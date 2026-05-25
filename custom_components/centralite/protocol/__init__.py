@@ -164,6 +164,16 @@ class CentraliteProtocol(ABC):
         return True
 
     @property
+    def supports_clock(self) -> bool:
+        """Whether the bridge has a settable real-time clock.
+
+        Elegance exposes get/set via ^K/^L. JetStream has no clock command,
+        so get_clock/set_clock raise NotImplementedError there. The button
+        platform uses this to decide whether to create a "Sync Clock" entity.
+        """
+        return False
+
+    @property
     @abstractmethod
     def max_loads(self) -> int: ...
 
