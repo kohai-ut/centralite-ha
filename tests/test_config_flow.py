@@ -168,9 +168,12 @@ async def test_jts_import_jetstream(hass):
 class _FakeScanProto:
     """Stand-in for JetStreamProtocol used by the config-flow scan tests."""
 
-    def __init__(self, port, baudrate=19200, *, names=None, connect_error=None):
+    def __init__(
+        self, port, baudrate=19200, *, names=None, connect_error=None, scan_error=None
+    ):
         self._names = names or {}
         self._connect_error = connect_error
+        self._scan_error = scan_error
 
     async def connect(self):
         if self._connect_error:
@@ -180,6 +183,8 @@ class _FakeScanProto:
         pass
 
     async def scan_device_names(self, **kwargs):
+        if self._scan_error:
+            raise self._scan_error
         return self._names
 
 
@@ -221,6 +226,25 @@ async def test_jetstream_scan_connection_failure(hass):
 
     result = await _jetstream_to_import(hass)
     fake = functools.partial(_FakeScanProto, connect_error=OSError("no device"))
+    with patch("custom_components.centralite.config_flow.JetStreamProtocol", fake):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"elg_text": "", "load_ids_csv": "", "scene_ids_csv": "",
+             "switch_ids_csv": "", "scan_jetstream": True},
+        )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "scan_failed"}
+
+
+async def test_jetstream_scan_disconnect_midway(hass):
+    """A mid-scan disconnect (ProtocolError) surfaces as scan_failed, not a crash."""
+    import functools
+    from unittest.mock import patch
+
+    from custom_components.centralite.protocol.common import ProtocolError
+
+    result = await _jetstream_to_import(hass)
+    fake = functools.partial(_FakeScanProto, scan_error=ProtocolError("connection lost"))
     with patch("custom_components.centralite.config_flow.JetStreamProtocol", fake):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],

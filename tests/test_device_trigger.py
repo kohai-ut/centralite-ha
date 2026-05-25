@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.centralite import device_trigger
 from custom_components.centralite.const import (
     CONF_BUTTON_IDS,
+    CONF_LOAD_IDS,
     CONF_SUBTYPE,
     CONF_SWITCH_IDS,
     CONF_SYSTEM_TYPE,
@@ -39,14 +40,16 @@ def _entry_and_device(hass, system, data):
 
 
 async def test_get_triggers_jetstream(hass):
+    """Each known device offers all 3 buttons (so .jts-imported devices work,
+    and buttons 2/3 are reachable — not just the configured button list)."""
     _entry, device = _entry_and_device(
-        hass, SYSTEM_JETSTREAM, {CONF_BUTTON_IDS: [[44, 1], [44, 2]]}
+        hass, SYSTEM_JETSTREAM, {CONF_LOAD_IDS: [44]}
     )
     triggers = await device_trigger.async_get_triggers(hass, device.id)
-    # 2 buttons x 3 actions
-    assert len(triggers) == 6
+    # 3 buttons x 3 actions
+    assert len(triggers) == 9
     subtypes = {t[CONF_SUBTYPE] for t in triggers}
-    assert subtypes == {button_subtype(44, 1), button_subtype(44, 2)}
+    assert subtypes == {button_subtype(44, b) for b in (1, 2, 3)}
     assert {t[CONF_TYPE] for t in triggers} == {"tap", "press", "release"}
 
 

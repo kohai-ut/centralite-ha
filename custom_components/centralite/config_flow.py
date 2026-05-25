@@ -314,9 +314,14 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # the config flow forever.
             await asyncio.wait_for(protocol.connect(), timeout=10)
         except Exception as exc:  # serial failure or timeout opening the bridge
+            await protocol.disconnect()  # close a partially-opened transport
             raise _ScanError(str(exc) or "timed out opening the bridge") from exc
         try:
             return await protocol.scan_device_names()
+        except Exception as exc:
+            # Includes a mid-scan disconnect (ProtocolError) — surface it as the
+            # clean scan_failed form error instead of crashing the flow.
+            raise _ScanError(str(exc) or "device scan failed") from exc
         finally:
             await protocol.disconnect()
 

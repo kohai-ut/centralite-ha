@@ -63,7 +63,6 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #   scenes: {idx: bool}              # commanded for Elegance, observed for JetStream
         self.data = {"loads": {}, "switches": {}, "scenes": {}}
         self._poll_unsub: CALLBACK_TYPE | None = None
-        self._device_id: str | None = None
         protocol.set_load_event_callback(self._on_load_event)
         protocol.set_switch_event_callback(self._on_switch_event)
         protocol.set_scene_event_callback(self._on_scene_event)
@@ -158,15 +157,17 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     def _bridge_device_id(self) -> str | None:
-        """HA device-registry id of the bridge device (cached after first lookup)."""
-        if self._device_id is None:
-            from homeassistant.helpers import device_registry as dr
+        """HA device-registry id of the bridge device.
 
-            device = dr.async_get(self.hass).async_get_device(
-                identifiers={(DOMAIN, self.config_entry.entry_id)}
-            )
-            self._device_id = device.id if device else None
-        return self._device_id
+        Looked up fresh each time (a registry lookup is just a dict hit) so a
+        deleted-and-recreated device can't leave us firing events at a dead id.
+        """
+        from homeassistant.helpers import device_registry as dr
+
+        device = dr.async_get(self.hass).async_get_device(
+            identifiers={(DOMAIN, self.config_entry.entry_id)}
+        )
+        return device.id if device else None
 
     def _on_scene_event(self, event: SceneEvent) -> None:
         self.data["scenes"][event.idx] = event.active
