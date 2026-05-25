@@ -18,11 +18,13 @@ from custom_components.centralite.const import (
     CONF_LOAD_IDS,
     CONF_PORT,
     CONF_SCENE_IDS,
+    CONF_SWITCH_IDS,
     CONF_SYSTEM_TYPE,
     DOMAIN,
     OPT_LOAD_NAMES,
     OPT_NONDIMMABLE_LOADS,
     OPT_POLL_INTERVAL,
+    OPT_SWITCH_NAMES,
     SYSTEM_ELEGANCE,
     SYSTEM_ELITE,
 )
@@ -99,6 +101,22 @@ async def test_elg_import_skips_phantom_loads(hass):
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_LOAD_IDS] == [1, 18]  # 50 (phantom) skipped
     assert result["data"][CONF_DISABLED_LOADS] == [18]  # referenced but unnamed
+
+
+async def test_elg_import_creates_named_switches(hass):
+    """Named keypad buttons in the .elg become switch entities with names."""
+    result = await _advance_to_import(hass)
+    elg = (
+        "[LOAD 1]\nNAME=Hall\n"
+        "[E4]\nNAME=North Garage Lights\nLOAD/SCENE=L\n"  # -> switch idx 53
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": elg, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SWITCH_IDS] == [53]
+    assert result["options"][OPT_SWITCH_NAMES] == {"53": "North Garage Lights"}
 
 
 async def test_manual_load_ids_always_enabled(hass):

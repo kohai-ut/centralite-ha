@@ -217,6 +217,24 @@ def test_referenced_loads_empty_when_none():
     assert parse_elg("[LOAD 001]\n  NAME=Solo\n").referenced_loads == set()
 
 
+# --- named keypad switch extraction ---
+
+
+def test_named_switches_mapping():
+    """Named keypad buttons map to a global switch index; unnamed ones are skipped."""
+    text = (
+        "[A1]\n  NAME=\n  LOAD/SCENE=L\n  #=12\n"           # unnamed -> skip
+        "[B1]\n  NAME=Front Entry Right\n  LOAD/SCENE=L\n"   # (1-1)*16+1+1 = 2
+        "[E4]\n  NAME=North Garage Lights\n  LOAD/SCENE=L\n"  # (4-1)*16+4+1 = 53
+    )
+    result = parse_elg(text)
+    assert result.switches == {2: "Front Entry Right", 53: "North Garage Lights"}
+
+
+def test_switches_empty_when_no_keypads():
+    assert parse_elg("[LOAD 1]\n  NAME=Solo\n").switches == {}
+
+
 # --- parse_csv_ids tests ---
 
 

@@ -18,7 +18,7 @@ SECTION_RE = re.compile(r"^\[(.+?)\]\s*$")
 LOAD_HEADER_RE = re.compile(r"^LOAD\s+(\d+)$")
 SCENE_HEADER_RE = re.compile(r"^SCENE\s+(\d+)-\s*(.+)$")
 # A keypad button section header is a letter A-P plus a button number, e.g. [A1].
-BUTTON_HEADER_RE = re.compile(r"^[A-P]\d+$")
+BUTTON_HEADER_RE = re.compile(r"^([A-P])(\d+)$")
 # Inside a scene body, each controlled load is listed as "LOAD_053- Some Name".
 SCENE_LOAD_RE = re.compile(r"^LOAD_(\d+)-")
 
@@ -44,6 +44,7 @@ class ElgConfig:
     scenes: dict[int, str] = field(default_factory=dict)
     dimmable: dict[int, bool] = field(default_factory=dict)
     referenced_loads: set[int] = field(default_factory=set)
+    switches: dict[int, str] = field(default_factory=dict)
 
 
 def _referenced_load_ids(text: str) -> set[int]:
@@ -87,6 +88,57 @@ def _referenced_load_ids(text: str) -> set[int]:
 
     flush_button()  # finalize the last section
     return referenced
+
+
+def _named_switches(text: str) -> dict[int, str]:
+    """Map each NAMED keypad button to its global switch index (1-384).
+
+    A section ``[<letter><number>]`` (A-P, 1-24) is one keypad button. Only
+    buttons the installer NAMED are imported — the labeled ones are the ones
+    worth exposing (most of the 384 slots are unnamed/unused).
+
+    Index mapping is derived from the ^H switch-bitmap layout (see
+    ``parse_switch_bitmap``): switches are numbered ``entry*16 + stars + 1``
+    over 24 entries x 16 STARS positions. Here the button NUMBER (1-24) is the
+    entry and the LETTER (A-P) is the STARS position, so::
+
+        idx = (number - 1) * 16 + (letter - 'A') + 1
+
+    NOTE: this mapping is DERIVED, not yet hardware-verified (the test bridge
+    wasn't emitting switch events to confirm it). If an imported switch entity
+    doesn't track its physical button, THIS is the formula to revisit; the
+    leading alternative is ``letter_index * 24 + number``.
+    """
+    switches: dict[int, str] = {}
+    section: str | None = None
+    name: str | None = None
+
+    def flush() -> None:
+        if section is None or not name:
+            return
+        m = BUTTON_HEADER_RE.match(section)
+        if m:
+            letter, number = m.group(1), int(m.group(2))
+            idx = (number - 1) * 16 + (ord(letter) - ord("A")) + 1
+            switches[idx] = name
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip("\r")
+        section_match = SECTION_RE.match(line)
+        if section_match:
+            flush()
+            section = section_match.group(1).strip()
+            name = None
+            continue
+        if (
+            section is not None
+            and BUTTON_HEADER_RE.match(section)
+            and line.strip().startswith("NAME=")
+        ):
+            name = line.strip().partition("=")[2].strip() or None
+
+    flush()  # finalize the last section
+    return switches
 
 
 def parse_elg(text: str) -> ElgConfig:
@@ -148,6 +200,7 @@ def parse_elg(text: str) -> ElgConfig:
         scenes=scenes,
         dimmable=dimmable,
         referenced_loads=_referenced_load_ids(text),
+        switches=_named_switches(text),
     )
 
 
