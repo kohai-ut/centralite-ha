@@ -270,6 +270,9 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Buttons from the .jts plus any hand-entered device IDs
                     # (which default to button 1).
                     button_pairs |= {(idx, 1) for idx in switch_ids}
+                    # Validate button device numbers explicitly against the
+                    # switch bound (don't rely on it equalling the load bound).
+                    _check_range("switch", {d for d, _ in button_pairs}, system_type)
                     self._data[CONF_BUTTON_IDS] = [list(p) for p in sorted(button_pairs)]
                 else:
                     self._data[CONF_SWITCH_IDS] = sorted(switch_ids)

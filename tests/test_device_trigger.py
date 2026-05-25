@@ -53,6 +53,18 @@ async def test_get_triggers_jetstream(hass):
     assert {t[CONF_TYPE] for t in triggers} == {"tap", "press", "release"}
 
 
+async def test_get_triggers_includes_button_only_devices(hass):
+    """A device known only via a button switch (not a load) still gets triggers."""
+    _entry, device = _entry_and_device(
+        hass, SYSTEM_JETSTREAM, {CONF_LOAD_IDS: [44], CONF_BUTTON_IDS: [[50, 1]]}
+    )
+    triggers = await device_trigger.async_get_triggers(hass, device.id)
+    subtypes = {t[CONF_SUBTYPE] for t in triggers}
+    # both device 44 (load) and device 50 (button-only) get buttons 1-3
+    assert button_subtype(50, 3) in subtypes
+    assert button_subtype(44, 1) in subtypes
+
+
 async def test_get_triggers_elegance_no_tap(hass):
     _entry, device = _entry_and_device(
         hass, SYSTEM_ELEGANCE, {CONF_SWITCH_IDS: [53]}

@@ -104,6 +104,22 @@ def parse_jts(text: str) -> JtsConfig:
     return JtsConfig(loads=loads, scenes=scenes, dimmable=dimmable, buttons=buttons)
 
 
+def _button_configured(button: ET.Element) -> bool:
+    """True if any of the button's actions has a non-zero BtnAction.
+
+    BtnAction is compared numerically (not as a string) so values like "00" or
+    " 0 " are correctly treated as unconfigured.
+    """
+    for name in ("tap", "pressandhold", "doubletap"):
+        action = button.find(name)
+        if action is None:
+            continue
+        raw = (action.findtext("BtnAction") or "").strip()
+        if raw.lstrip("-").isdigit() and int(raw) != 0:
+            return True
+    return False
+
+
 def _collect_buttons(
     dev: ET.Element, device_idx: int, device_name: str, out: dict[tuple[int, int], str]
 ) -> None:
@@ -123,12 +139,7 @@ def _collect_buttons(
         bid = int(raw_id)
         if bid > 2:  # not addressable over the third-party protocol
             continue
-        configured = any(
-            (action := button.find(name)) is not None
-            and (action.findtext("BtnAction") or "0") != "0"
-            for name in ("tap", "pressandhold", "doubletap")
-        )
-        if configured:
+        if _button_configured(button):
             protocol_button = bid + 1
             label = f"{device_name} Button {protocol_button}" if device_name else ""
             out[(device_idx, protocol_button)] = label

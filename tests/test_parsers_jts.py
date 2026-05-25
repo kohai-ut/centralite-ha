@@ -84,6 +84,20 @@ def test_buttons_parsed_and_mapped():
     assert cfg.buttons[(5, 1)] == "Den Button 1"
 
 
+def test_button_action_compared_numerically():
+    """BtnAction '00' / ' 0 ' are numerically zero -> not configured."""
+    device = """\
+    <Device>
+      <DeviceID>5</DeviceID><Name>Den</Name>
+      <SendThirdParty>true</SendThirdParty><Active>true</Active>
+      <buttonList>
+        <Button><ID>0</ID><tap><BtnAction>00</BtnAction></tap></Button>
+        <Button><ID>1</ID><tap><BtnAction> 0 </BtnAction></tap></Button>
+      </buttonList>
+    </Device>"""
+    assert parse_jts(_doc(devices=device)).buttons == {}
+
+
 def test_buttons_skipped_for_non_thirdparty_device():
     device = """\
     <Device>

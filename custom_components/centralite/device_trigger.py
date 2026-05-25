@@ -28,6 +28,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
+    CONF_BUTTON_IDS,
     CONF_LOAD_IDS,
     CONF_SUBTYPE,
     CONF_SWITCH_IDS,
@@ -80,10 +81,12 @@ async def async_get_triggers(
     if entry.data.get(CONF_SYSTEM_TYPE) == SYSTEM_JETSTREAM:
         # Every JetStream device can host up to 3 keypad buttons (the protocol
         # numbers them 1-3, exactly what an ACT event reports). Offer all three
-        # per known device so a press of any physical button is trigger-able,
-        # rather than relying on a configured button list (a .jts import doesn't
-        # populate one).
-        for device_idx in entry.data.get(CONF_LOAD_IDS, []):
+        # per known device so any physical button is trigger-able. Devices come
+        # from the loads plus any device that has a configured button switch
+        # (covers a keypad-only device entered manually, not just .jts loads).
+        device_ids = set(entry.data.get(CONF_LOAD_IDS, []))
+        device_ids |= {pair[0] for pair in entry.data.get(CONF_BUTTON_IDS, [])}
+        for device_idx in sorted(device_ids):
             for button in range(1, JETSTREAM_MAX_BUTTONS_PER_SWITCH + 1):
                 subtype = button_subtype(device_idx, button)
                 triggers += [_trigger(device_id, t, subtype) for t in TRIGGER_TYPES]
