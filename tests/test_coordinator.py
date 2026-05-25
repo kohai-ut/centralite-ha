@@ -23,6 +23,7 @@ from custom_components.centralite.const import (
     CONF_SYSTEM_TYPE,
     DOMAIN,
     OPT_POLL_INTERVAL,
+    OPT_SYNC_CLOCK_ON_CONNECT,
     SYSTEM_ELEGANCE,
 )
 from custom_components.centralite.coordinator import CentraliteCoordinator
@@ -139,6 +140,63 @@ async def test_disconnect_marks_update_failed(hass):
     proto.disconnect_cb(OSError("cable pulled"))
     assert coord.last_update_success is False
     await coord.async_shutdown()
+
+
+async def test_sync_clock_on_connect_when_enabled(hass):
+    proto = FakeProtocol(supports_clock=True, bulk_loads={})
+    coord = CentraliteCoordinator(
+        hass, _entry(hass, {OPT_SYNC_CLOCK_ON_CONNECT: True}), proto
+    )
+    await coord.async_init()
+    assert [c for c in proto.calls if c[0] == "set_clock"]
+
+
+async def test_no_sync_clock_when_disabled(hass):
+    """Default (option absent) must not touch the bridge clock."""
+    proto = FakeProtocol(supports_clock=True, bulk_loads={})
+    coord = CentraliteCoordinator(hass, _entry(hass), proto)
+    await coord.async_init()
+    assert not [c for c in proto.calls if c[0] == "set_clock"]
+
+
+async def test_no_sync_clock_when_unsupported(hass):
+    """Even with the option on, a clockless bridge (JetStream) is never written
+    to — set_clock would raise NotImplementedError there."""
+    proto = FakeProtocol(supports_clock=False, supports_bulk=False)
+    coord = CentraliteCoordinator(
+        hass, _entry(hass, {OPT_SYNC_CLOCK_ON_CONNECT: True}), proto
+    )
+    await coord.async_init()
+    assert not [c for c in proto.calls if c[0] == "set_clock"]
+
+
+async def test_sync_clock_again_on_reconnect(hass):
+    proto = FakeProtocol(supports_clock=True, bulk_loads={})
+    coord = CentraliteCoordinator(
+        hass, _entry(hass, {OPT_SYNC_CLOCK_ON_CONNECT: True}), proto
+    )
+    await coord.async_init()
+    assert len([c for c in proto.calls if c[0] == "set_clock"]) == 1
+    proto.disconnect_cb(OSError("cable pulled"))
+    await _advance(hass)  # reconnect timer fires -> re-sync
+    assert proto.connected is True
+    assert len([c for c in proto.calls if c[0] == "set_clock"]) == 2
+    await coord.async_shutdown()
+
+
+async def test_sync_clock_failure_does_not_break_setup(hass):
+    """A clock-set error must be swallowed, not abort async_init."""
+
+    async def boom(_dt):
+        raise OSError("write failed")
+
+    proto = FakeProtocol(supports_clock=True, bulk_loads={})
+    proto.set_clock = boom  # type: ignore[method-assign]
+    coord = CentraliteCoordinator(
+        hass, _entry(hass, {OPT_SYNC_CLOCK_ON_CONNECT: True}), proto
+    )
+    await coord.async_init()  # must not raise
+    assert proto.connected is True
 
 
 async def test_reconnect_restores_availability(hass):

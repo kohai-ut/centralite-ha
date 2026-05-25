@@ -26,8 +26,10 @@ from custom_components.centralite.const import (
     OPT_NONDIMMABLE_LOADS,
     OPT_POLL_INTERVAL,
     OPT_SWITCH_NAMES,
+    OPT_SYNC_CLOCK_ON_CONNECT,
     SYSTEM_ELEGANCE,
     SYSTEM_ELITE,
+    SYSTEM_JETSTREAM,
 )
 
 _USER_INPUT = {CONF_SYSTEM_TYPE: SYSTEM_ELEGANCE, CONF_PORT: "/dev/ttyUSB0", CONF_BAUD: 19200}
@@ -350,3 +352,34 @@ async def test_options_flow_has_no_append_cr(hass):
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][OPT_POLL_INTERVAL] == 120
     assert "append_cr" not in result["data"]
+
+
+async def test_options_flow_elegance_persists_clock_sync(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data=_USER_INPUT, options={})
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    schema_keys = {str(k.schema) for k in result["data_schema"].schema}
+    assert OPT_SYNC_CLOCK_ON_CONNECT in schema_keys  # offered for Elegance
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {OPT_POLL_INTERVAL: 300, OPT_SYNC_CLOCK_ON_CONNECT: True},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][OPT_SYNC_CLOCK_ON_CONNECT] is True
+
+
+async def test_options_flow_jetstream_hides_clock_sync(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={**_USER_INPUT, CONF_SYSTEM_TYPE: SYSTEM_JETSTREAM},
+        options={},
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    schema_keys = {str(k.schema) for k in result["data_schema"].schema}
+    assert OPT_SYNC_CLOCK_ON_CONNECT not in schema_keys  # no clock on JetStream
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {OPT_POLL_INTERVAL: 300}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert OPT_SYNC_CLOCK_ON_CONNECT not in result["data"]

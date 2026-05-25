@@ -41,10 +41,12 @@
         "title": "Centralite options",
         "description": "Tune how the integration polls the bridge for state changes.",
         "data": {
-          "poll_interval": "Safety-net poll interval (seconds; 0 to disable)"
+          "poll_interval": "Safety-net poll interval (seconds; 0 to disable)",
+          "sync_clock_on_connect": "Sync bridge clock on connect (Elegance)"
         },
         "data_description": {
-          "poll_interval": "Elegance only: how often to send a full ^G query to catch any state drift. Push events are the primary update path; this is a safety net for loads that aren't programmed for spontaneous output. JetStream is push-only and ignores this setting."
+          "poll_interval": "Elegance only: how often to send a full ^G query to catch any state drift. Push events are the primary update path; this is a safety net for loads that aren't programmed for spontaneous output. JetStream is push-only and ignores this setting.",
+          "sync_clock_on_connect": "When enabled, set the Elegance bridge's real-time clock to Home Assistant's local time after each successful connection (startup and after a reconnect). Corrects clock drift without an automation. Runs only once the link is up, so there's no boot-time race."
         }
       }
     }
