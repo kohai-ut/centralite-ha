@@ -33,6 +33,7 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     OPT_LOAD_NAMES,
+    OPT_NONDIMMABLE_LOADS,
     OPT_POLL_INTERVAL,
     OPT_SCENE_NAMES,
     SYSTEM_ELEGANCE,
@@ -160,6 +161,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 load_ids: set[int] = set()
                 scene_ids: set[int] = set()
                 switch_ids: set[int] = set()
+                nondimmable: set[int] = set()
 
                 elg_text = user_input.get("elg_text", "").strip()
                 if elg_text:
@@ -174,6 +176,8 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         load_ids.add(idx)
                         if name:
                             load_names[str(idx)] = name
+                        if not cfg.dimmable.get(idx, True):
+                            nondimmable.add(idx)
                     for idx, name in cfg.scenes.items():
                         scene_ids.add(idx)
                         if name:
@@ -199,6 +203,10 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._options[OPT_LOAD_NAMES] = load_names
                 if scene_names:
                     self._options[OPT_SCENE_NAMES] = scene_names
+                # Only record loads we're actually exposing as on/off.
+                nondimmable &= load_ids
+                if nondimmable:
+                    self._options[OPT_NONDIMMABLE_LOADS] = sorted(nondimmable)
 
                 title = f"Centralite {SYSTEM_LABELS[self._data[CONF_SYSTEM_TYPE]]}"
                 return self.async_create_entry(

@@ -22,6 +22,18 @@ CentraLite Systems made commercial lighting controllers that talk to switches an
 
 A 19200-baud USB-to-serial adapter on the HA host (Raspberry Pi, NUC, VM) plugs into the bridge's RS-232 port. `/dev/serial/by-id/...` paths are recommended for stability across reboots.
 
+## Which integration should I use? (vs. the built-in LiteJet integration)
+
+Home Assistant ships a built-in [**LiteJet**](https://www.home-assistant.io/integrations/litejet/) integration (via [`pylitejet`](https://github.com/joncar/pylitejet)). LiteJet is a sibling CentraLite product, and because these systems share a family of RS-232 protocols, the built-in integration also advertises Elegance and JetStream support. Here's how to choose:
+
+| Your system | Use |
+|---|---|
+| **LiteJet** | The [built-in LiteJet integration](https://www.home-assistant.io/integrations/litejet/) — it's purpose-built for LiteJet and well maintained. This integration does **not** target LiteJet. |
+| **JetStream** | **This integration.** JetStream has no bulk-state command (`^G`/`^H`), which the LiteJet library requires to connect, so the built-in integration cannot talk to a JetStream bridge. This integration speaks JetStream's native `DEV`/`ACT`/`SCN` protocol. |
+| **Elegance** | **This integration** is recommended, especially for larger installs. The built-in integration handles Elegance only through the shared LiteJet command set: it reads just the first 48 loads (this integration handles the full 192-load address space), mis-parses Elegance's physical-switch/keypad events, and exposes every load as a dimmer. This integration reads each load's dimmable/on-off type from your `.elg`. For a small, loads-only Elegance setup the built-in one may suffice. |
+
+In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not sure which CentraLite system you have, check the controller's model or the programming software it shipped with.
+
 ## Features
 
 - **Native HA config flow** — UI setup, no YAML editing required
@@ -29,6 +41,7 @@ A 19200-baud USB-to-serial adapter on the HA host (Raspberry Pi, NUC, VM) plugs 
 - **Push-primary updates** with an optional safety-net `^G` poll for loads not programmed for spontaneous output
 - **One switch per scene** — no more `-ON`/`-OFF` entity pairs (v1 limitation removed)
 - **Bulk friendly-name import** from your Centralite `.elg` (Elegance) export
+- **Load-type aware** — loads marked non-dimmable in your `.elg` are exposed as on/off lights, not fake dimmers with a slider that does nothing
 - **JetStream on-device name query** via the bridge's `^N` command — no PC config file needed
 - **DeviceInfo + has_entity_name** — single device card with all entities grouped underneath, names auto-compose
 - **HACS-compatible** — install as a custom repository (default-listing planned once stable)

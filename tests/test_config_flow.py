@@ -20,6 +20,7 @@ from custom_components.centralite.const import (
     CONF_SYSTEM_TYPE,
     DOMAIN,
     OPT_LOAD_NAMES,
+    OPT_NONDIMMABLE_LOADS,
     OPT_POLL_INTERVAL,
     SYSTEM_ELEGANCE,
     SYSTEM_ELITE,
@@ -58,6 +59,23 @@ async def test_full_flow_with_elg_paste(hass):
     assert result["data"][CONF_LOAD_IDS] == [1, 2]
     assert result["data"][CONF_SCENE_IDS] == [3]
     assert result["options"][OPT_LOAD_NAMES] == {"1": "Kitchen", "2": "Hall"}
+
+
+async def test_elg_import_records_nondimmable_loads(hass):
+    """DIMMER=N loads from the .elg are stored so they become on/off lights."""
+    result = await _advance_to_import(hass)
+    elg = (
+        "[LOAD 1]\nNAME=Recessed\nDIMMER=Y\n"
+        "[LOAD 2]\nNAME=Closet\nDIMMER=N\n"
+        "[LOAD 3]\nNAME=Lamp\nDIMMER=N\n"
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": elg, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_LOAD_IDS] == [1, 2, 3]
+    assert result["options"][OPT_NONDIMMABLE_LOADS] == [2, 3]
 
 
 async def test_csv_only_flow(hass):
