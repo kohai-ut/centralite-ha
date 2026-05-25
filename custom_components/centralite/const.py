@@ -42,3 +42,20 @@ OPT_NONDIMMABLE_LOADS: Final = "nondimmable_loads"
 # Defaults
 DEFAULT_BAUD: Final = 19200
 DEFAULT_POLL_INTERVAL: Final = 300  # seconds; 0 or None disables safety poll
+
+# Bus event fired on every physical keypad button activity (tap/press/release).
+# device_trigger.py exposes these as HA device triggers; automations can also
+# listen for it directly. Data: device_id, type (action), subtype (which button).
+EVENT_BUTTON: Final = f"{DOMAIN}_event"
+# Event-data key naming which button fired. Paired with CONF_TYPE (the action).
+CONF_SUBTYPE: Final = "subtype"
+
+
+def button_subtype(device_idx: int, button: int) -> str:
+    """Stable subtype string identifying one keypad button.
+
+    Shared by the coordinator (when firing EVENT_BUTTON) and device_trigger.py
+    (when enumerating triggers) so the two always agree. Elegance switches have
+    no separate button index and use button 0.
+    """
+    return f"device_{device_idx:03d}_button_{button}"
