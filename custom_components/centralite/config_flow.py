@@ -38,6 +38,7 @@ from .const import (
     OPT_NONDIMMABLE_LOADS,
     OPT_POLL_INTERVAL,
     OPT_SCENE_NAMES,
+    OPT_SWITCH_NAMES,
     SYSTEM_ELEGANCE,
     SYSTEM_JETSTREAM,
     SYSTEM_LABELS,
@@ -169,6 +170,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 load_names: dict[str, str] = {}
                 scene_names: dict[str, str] = {}
+                switch_names: dict[str, str] = {}
                 load_ids: set[int] = set()
                 scene_ids: set[int] = set()
                 switch_ids: set[int] = set()
@@ -219,6 +221,13 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         scene_ids.add(idx)
                         if name:
                             scene_names[str(idx)] = name
+                    # Named keypad buttons -> switch entities. Mapping from the
+                    # [letter][number] coordinate to the global switch index is
+                    # derived (see parsers.elg._named_switches) and not yet
+                    # hardware-verified.
+                    for idx, name in cfg.switches.items():
+                        switch_ids.add(idx)
+                        switch_names[str(idx)] = name
 
                 # IDs typed by hand are explicit intent: always created enabled.
                 csv_loads = set(parse_csv_ids(user_input.get("load_ids_csv", "")))
@@ -254,6 +263,8 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._options[OPT_LOAD_NAMES] = load_names
                 if scene_names:
                     self._options[OPT_SCENE_NAMES] = scene_names
+                if switch_names:
+                    self._options[OPT_SWITCH_NAMES] = switch_names
                 # Only record loads we're actually exposing as on/off.
                 nondimmable &= load_ids
                 if nondimmable:
