@@ -33,6 +33,7 @@ DEFAULT_BAUDRATE = 19200
 COMMAND_TIMEOUT = 2.0
 READ_MAX_BUFFER = 100
 CR = 0x0D
+LF = 0x0A
 
 # Inter-command delay: a brief pause after each write before releasing the
 # transmit lock. The v1 JetStream integration discovered that without this,
@@ -211,6 +212,12 @@ class _BaseSerialProtocol(CentraliteProtocol):
             byte = await self._reader.readexactly(1)
             if byte[0] == CR:
                 return buf.decode("ascii", errors="replace")
+            if byte[0] == LF:
+                # JetStream terminates lines with CRLF (Elegance uses CR only).
+                # CR already returned the line, so skip the trailing LF rather
+                # than let it become the first byte of the next line and corrupt
+                # length/prefix-based dispatch of the following event.
+                continue
             buf.append(byte[0])
             if len(buf) >= READ_MAX_BUFFER:
                 _LOGGER.warning(
