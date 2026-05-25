@@ -79,6 +79,16 @@ def test_bad_xml_raises_valueerror():
         raise AssertionError(f"expected ValueError for {bad!r}")
 
 
+def test_oversized_input_rejected():
+    """A wildly oversized paste is refused before ElementTree sees it."""
+    huge = "<GulfStreamCL>" + ("<x/>" * 3_000_000)  # ~12 MB > 8 MB cap
+    try:
+        parse_jts(huge)
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for oversized input")
+
+
 def test_handles_encoding_declaration():
     """A str carrying an encoding= declaration must not trip ElementTree."""
     cfg = parse_jts(_doc(devices=_device(7, "Den")))

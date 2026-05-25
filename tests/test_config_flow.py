@@ -231,6 +231,19 @@ async def test_jetstream_scan_connection_failure(hass):
     assert result["errors"] == {"base": "scan_failed"}
 
 
+async def test_elegance_rejects_xml_paste(hass):
+    """Routing is by system type: an Elegance entry sends XML to the .elg parser,
+    which finds nothing and reports import_failed (rather than misrouting to .jts)."""
+    result = await _advance_to_import(hass)  # Elegance
+    xml = "<?xml version='1.0'?><GulfStreamCL><DeviceList></DeviceList></GulfStreamCL>"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": xml, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "import_failed"}
+
+
 async def test_csv_only_flow(hass):
     result = await _advance_to_import(hass)
     result = await hass.config_entries.flow.async_configure(

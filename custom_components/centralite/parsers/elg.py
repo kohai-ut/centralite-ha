@@ -119,8 +119,12 @@ def _named_switches(text: str) -> dict[int, str]:
         m = BUTTON_HEADER_RE.match(section)
         if m:
             letter, number = m.group(1), int(m.group(2))
-            idx = (number - 1) * 16 + (ord(letter) - ord("A")) + 1
-            switches[idx] = name
+            # Buttons are 1-24 per keypad chain. Skip anything out of range so a
+            # stray/garbage section can't produce an idx > 384 and abort the
+            # whole import on the later range check.
+            if 1 <= number <= 24:
+                idx = (number - 1) * 16 + (ord(letter) - ord("A")) + 1
+                switches[idx] = name
 
     for raw_line in text.splitlines():
         line = raw_line.rstrip("\r")

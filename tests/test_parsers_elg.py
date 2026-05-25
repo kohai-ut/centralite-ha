@@ -235,6 +235,12 @@ def test_switches_empty_when_no_keypads():
     assert parse_elg("[LOAD 1]\n  NAME=Solo\n").switches == {}
 
 
+def test_named_switches_skips_out_of_range_button():
+    """A stray [A99] (button# > 24) must be skipped, not poison the whole import."""
+    text = "[A99]\n  NAME=Bogus\n[B1]\n  NAME=Real\n"
+    assert parse_elg(text).switches == {2: "Real"}
+
+
 # --- parse_csv_ids tests ---
 
 

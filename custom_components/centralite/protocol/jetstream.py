@@ -54,6 +54,11 @@ JETSTREAM_INTER_COMMAND_DELAY = 0.1
 # stays in the tens-of-seconds range rather than minutes. A configured device
 # replies well under this on a healthy link.
 SCAN_PROBE_TIMEOUT = 0.3
+# The discovery scan covers the protocol's documented device range (001-096)
+# rather than the permissive 199 validation bound, so a mostly-empty bridge
+# finishes in ~30s of timeouts instead of ~60s. Devices above 96 (rare) need a
+# .jts import or manual ID entry.
+JETSTREAM_SCAN_MAX_DEVICE = 96
 
 DEV_PREFIX = "DEV"
 ACT_PREFIX = "ACT"
@@ -217,7 +222,7 @@ class JetStreamProtocol(_BaseSerialProtocol):
         self,
         *,
         start: int = 1,
-        end: int = JETSTREAM_MAX_LOADS,
+        end: int = JETSTREAM_SCAN_MAX_DEVICE,
         timeout: float = SCAN_PROBE_TIMEOUT,
     ) -> dict[int, str]:
         """Discover configured devices by querying ``^N`` across a range.
@@ -228,10 +233,16 @@ class JetStreamProtocol(_BaseSerialProtocol):
         scan). Returns {device_idx: name} for every index that responded with a
         non-empty name. Devices with an empty stored name are skipped (no useful
         name to import); use a config file to capture those.
+
+        Aborts with ProtocolError if the connection drops mid-scan, rather than
+        mistaking every post-disconnect probe for an unconfigured slot and
+        returning a silently-partial result.
         """
         found: dict[int, str] = {}
         for idx in range(start, end + 1):
             name = await self.get_device_name(idx, timeout=timeout)
+            if self._lost:
+                raise ProtocolError("Connection lost during device scan")
             if name:
                 found[idx] = name
         return found
