@@ -71,6 +71,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._poll_unsub: CALLBACK_TYPE | None = None
         self._reconnect_unsub: CALLBACK_TYPE | None = None
         self._reconnect_delay = RECONNECT_INITIAL_DELAY
+        self._reconnecting = False
         self._shutting_down = False
         protocol.set_load_event_callback(self._on_load_event)
         protocol.set_switch_event_callback(self._on_switch_event)
@@ -203,7 +204,9 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._schedule_reconnect()
 
     def _schedule_reconnect(self) -> None:
-        if self._shutting_down or self._reconnect_unsub is not None:
+        # Guarded against shutdown, an in-flight attempt, and an already-armed
+        # timer so a flurry of disconnects can't stack reconnect loops.
+        if self._shutting_down or self._reconnecting or self._reconnect_unsub is not None:
             return
         _LOGGER.debug("Scheduling reconnect in %ss", self._reconnect_delay)
         self._reconnect_unsub = async_call_later(
@@ -214,20 +217,33 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._reconnect_unsub = None
         if self._shutting_down:
             return
+        self._reconnecting = True
+        success = False
         try:
             await self.protocol.disconnect()  # tear down the dead transport
             await self.protocol.connect()
             await self._prime_loads()
+            # Treat as success only if the link is still up — it may have
+            # dropped again during the open/prime window.
+            success = self.protocol.connected
         except Exception as err:
-            # Still down — back off (capped) and try again.
-            self._reconnect_delay = min(self._reconnect_delay * 2, RECONNECT_MAX_DELAY)
-            _LOGGER.debug("Reconnect attempt failed (%s); will retry", err)
-            self._schedule_reconnect()
+            _LOGGER.debug("Reconnect attempt failed (%s)", err)
+        finally:
+            self._reconnecting = False
+
+        # Re-check after the awaits: the entry may have been unloaded mid-attempt.
+        if self._shutting_down:
+            if success:
+                await self.protocol.disconnect()
             return
-        _LOGGER.info("Reconnected to Centralite bridge")
-        self._reconnect_delay = RECONNECT_INITIAL_DELAY
-        self.async_set_updated_data(self.data)  # clears the error -> entities available
-        self._schedule_safety_poll()
+        if success:
+            _LOGGER.info("Reconnected to Centralite bridge")
+            self._reconnect_delay = RECONNECT_INITIAL_DELAY
+            self.async_set_updated_data(self.data)  # clears error -> available
+            self._schedule_safety_poll()
+        else:
+            self._reconnect_delay = min(self._reconnect_delay * 2, RECONNECT_MAX_DELAY)
+            self._schedule_reconnect()
 
     def _cancel_poll(self) -> None:
         if self._poll_unsub is not None:
@@ -239,7 +255,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # (JetStream) have none, so there is nothing to poll — skip it rather
         # than scheduling a callback that raises every interval.
         self._cancel_poll()
-        if not self.protocol.supports_bulk_query:
+        if self._shutting_down or not self.protocol.supports_bulk_query:
             return
         interval = self.config_entry.options.get(OPT_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         if not interval:

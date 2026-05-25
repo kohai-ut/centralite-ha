@@ -183,3 +183,55 @@ async def test_shutdown_cancels_pending_reconnect(hass):
     count = proto.connect_count
     await _advance(hass)  # no reconnect should fire after shutdown
     assert proto.connect_count == count
+
+
+async def test_reconnect_aborts_if_shutdown_midflight(hass):
+    """If the entry unloads while a reconnect is mid-attempt, it must not
+    re-open the link or arm a poll on the torn-down coordinator."""
+    proto = FakeProtocol(supports_bulk=True, bulk_loads={})
+    coord = CentraliteCoordinator(hass, _entry(hass), proto)
+    await coord.async_init()
+
+    orig_connect = proto.connect
+
+    async def connect_then_shutdown():
+        await orig_connect()
+        coord._shutting_down = True  # simulate async_shutdown landing mid-attempt
+
+    proto.connect = connect_then_shutdown
+    proto.disconnect_cb(OSError("drop"))
+    await _advance(hass)  # reconnect fires, connects, then sees shutdown
+    assert coord.last_update_success is False  # did NOT mark available
+    assert coord._poll_unsub is None  # did NOT arm a poll
+    assert proto.connected is False  # cleaned up the opened link
+
+
+async def test_reconnect_treats_immediate_redrop_as_failure(hass):
+    """A link that drops again during the open/prime window isn't a success."""
+    proto = FakeProtocol(supports_bulk=True, bulk_loads={})
+    coord = CentraliteCoordinator(hass, _entry(hass), proto)
+    await coord.async_init()
+
+    orig_connect = proto.connect
+
+    async def connect_then_die():
+        await orig_connect()
+        proto.connected = False  # dropped immediately after opening
+
+    proto.connect = connect_then_die
+    proto.disconnect_cb(OSError("drop"))
+    await _advance(hass)  # attempt: connects then dies -> not success -> retry armed
+    assert coord.last_update_success is False
+
+    proto.connect = orig_connect  # link comes back healthy
+    await _advance(hass)
+    assert coord.last_update_success is True
+
+
+async def test_safety_poll_not_scheduled_when_shutting_down(hass):
+    proto = FakeProtocol(supports_bulk=True, bulk_loads={})
+    coord = CentraliteCoordinator(hass, _entry(hass, {OPT_POLL_INTERVAL: 300}), proto)
+    await coord.async_init()
+    coord._shutting_down = True
+    coord._schedule_safety_poll()  # e.g. a poll finishing after shutdown began
+    assert coord._poll_unsub is None
