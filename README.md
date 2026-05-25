@@ -41,6 +41,7 @@ In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not
 - **Push-primary updates** with an optional safety-net `^G` poll for loads not programmed for spontaneous output
 - **One switch per scene** — no more `-ON`/`-OFF` entity pairs (v1 limitation removed)
 - **Config import** — bulk-import friendly names, scenes, and the device list from your Centralite `.elg` (Elegance) or `.jts` (JetStream) export
+- **JetStream device discovery** — no config file? Optionally scan the bridge at setup (`^N`) to pull in device names directly. One-time, never on boot
 - **Load-type aware** — loads marked non-dimmable in your config are exposed as on/off lights, not fake dimmers with a slider that does nothing
 - **Skips unused load slots (Elegance)** — a `.elg` lists all 192 load slots, most of them empty defaults. Only loads that are named or used in a scene/keypad become entities; referenced-but-unnamed loads are created disabled (enable them anytime in HA), and unused slots are skipped entirely. (A `.jts` lists only real devices, so nothing to skip there.)
 - **DeviceInfo + has_entity_name** — single device card with all entities grouped underneath, names auto-compose

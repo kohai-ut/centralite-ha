@@ -10,6 +10,7 @@ from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -50,6 +51,7 @@ from .protocol.jetstream import (
     JETSTREAM_MAX_LOADS,
     JETSTREAM_MAX_SCENES,
     JETSTREAM_MAX_SWITCHES,
+    JetStreamProtocol,
 )
 
 # Valid ID ranges per system, used to reject out-of-range IDs at config time
@@ -70,6 +72,10 @@ _SYSTEM_LIMITS: dict[str, dict[str, int]] = {
 
 class _IdRangeError(ValueError):
     """An imported/entered ID falls outside the valid range for the system."""
+
+
+class _ScanError(Exception):
+    """The optional JetStream ^N discovery scan could not reach the bridge."""
 
 
 def _check_range(kind: str, ids: set[int], system_type: str) -> None:
@@ -118,15 +124,18 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     )
 
 
-def _import_schema() -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Optional("elg_text", default=""): _MULTILINE_SELECTOR,
-            vol.Optional("load_ids_csv", default=""): _CSV_SELECTOR,
-            vol.Optional("scene_ids_csv", default=""): _CSV_SELECTOR,
-            vol.Optional("switch_ids_csv", default=""): _CSV_SELECTOR,
-        }
-    )
+def _import_schema(system_type: str) -> vol.Schema:
+    schema: dict[Any, Any] = {
+        vol.Optional("elg_text", default=""): _MULTILINE_SELECTOR,
+        vol.Optional("load_ids_csv", default=""): _CSV_SELECTOR,
+        vol.Optional("scene_ids_csv", default=""): _CSV_SELECTOR,
+        vol.Optional("switch_ids_csv", default=""): _CSV_SELECTOR,
+    }
+    if system_type == SYSTEM_JETSTREAM:
+        # JetStream-only: discover device names by scanning the bridge (^N).
+        # No effect for Elegance, which has no per-device name query.
+        schema[vol.Optional("scan_jetstream", default=False)] = BooleanSelector()
+    return vol.Schema(schema)
 
 
 class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -218,6 +227,15 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 scene_ids.update(parse_csv_ids(user_input.get("scene_ids_csv", "")))
                 switch_ids.update(parse_csv_ids(user_input.get("switch_ids_csv", "")))
 
+                # Optional one-time discovery scan of JetStream device names.
+                if (
+                    user_input.get("scan_jetstream")
+                    and self._data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM
+                ):
+                    for idx, name in (await self._scan_jetstream_names()).items():
+                        load_ids.add(idx)
+                        load_names[str(idx)] = name
+
                 system_type = self._data[CONF_SYSTEM_TYPE]
                 _check_range("load", load_ids, system_type)
                 _check_range("scene", scene_ids, system_type)
@@ -245,6 +263,9 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=title, data=self._data, options=self._options
                 )
+            except _ScanError:
+                _LOGGER.warning("JetStream device scan failed", exc_info=True)
+                errors["base"] = "scan_failed"
             except _IdRangeError:
                 _LOGGER.warning("Import rejected: ID out of range", exc_info=True)
                 errors["base"] = "ids_out_of_range"
@@ -254,12 +275,31 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="import",
-            data_schema=_import_schema(),
+            data_schema=_import_schema(self._data[CONF_SYSTEM_TYPE]),
             errors=errors,
             description_placeholders={
                 "system": SYSTEM_LABELS[self._data[CONF_SYSTEM_TYPE]],
             },
         )
+
+    async def _scan_jetstream_names(self) -> dict[int, str]:
+        """Open a temporary connection and discover device names via ^N.
+
+        Runs only during setup (never on every boot) and can take up to a
+        minute, since unconfigured device slots are silent and time out. Raises
+        _ScanError if the bridge can't be reached.
+        """
+        protocol = JetStreamProtocol(
+            self._data[CONF_PORT], baudrate=self._data[CONF_BAUD]
+        )
+        try:
+            await protocol.connect()
+        except Exception as exc:  # serial/connection failure
+            raise _ScanError(str(exc)) from exc
+        try:
+            return await protocol.scan_device_names()
+        finally:
+            await protocol.disconnect()
 
     @staticmethod
     @callback

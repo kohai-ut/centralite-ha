@@ -147,6 +147,72 @@ async def test_jts_import_jetstream(hass):
     assert CONF_DISABLED_LOADS not in result["data"]  # .jts devices are all real
 
 
+class _FakeScanProto:
+    """Stand-in for JetStreamProtocol used by the config-flow scan tests."""
+
+    def __init__(self, port, baudrate=19200, *, names=None, connect_error=None):
+        self._names = names or {}
+        self._connect_error = connect_error
+
+    async def connect(self):
+        if self._connect_error:
+            raise self._connect_error
+
+    async def disconnect(self):
+        pass
+
+    async def scan_device_names(self, **kwargs):
+        return self._names
+
+
+async def _jetstream_to_import(hass):
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_SYSTEM_TYPE: "jetstream", CONF_PORT: "/dev/ttyUSB0", CONF_BAUD: 19200},
+    )
+    assert result["step_id"] == "import"
+    return result
+
+
+async def test_jetstream_scan_import(hass):
+    """Checking 'scan' discovers device names from the bridge and creates loads."""
+    import functools
+
+    from unittest.mock import patch
+
+    result = await _jetstream_to_import(hass)
+    fake = functools.partial(_FakeScanProto, names={2: "Game Cans", 7: "Den"})
+    with patch("custom_components.centralite.config_flow.JetStreamProtocol", fake):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"elg_text": "", "load_ids_csv": "", "scene_ids_csv": "",
+             "switch_ids_csv": "", "scan_jetstream": True},
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_LOAD_IDS] == [2, 7]
+    assert result["options"][OPT_LOAD_NAMES] == {"2": "Game Cans", "7": "Den"}
+
+
+async def test_jetstream_scan_connection_failure(hass):
+    from unittest.mock import patch
+
+    import functools
+
+    result = await _jetstream_to_import(hass)
+    fake = functools.partial(_FakeScanProto, connect_error=OSError("no device"))
+    with patch("custom_components.centralite.config_flow.JetStreamProtocol", fake):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"elg_text": "", "load_ids_csv": "", "scene_ids_csv": "",
+             "switch_ids_csv": "", "scan_jetstream": True},
+        )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "scan_failed"}
+
+
 async def test_csv_only_flow(hass):
     result = await _advance_to_import(hass)
     result = await hass.config_entries.flow.async_configure(
