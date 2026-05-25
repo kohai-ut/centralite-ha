@@ -115,6 +115,8 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
         if not self.config_entry.options.get(OPT_SYNC_CLOCK_ON_CONNECT, False):
             return
+        if not self.protocol.connected:
+            return  # link dropped during connect/prime — don't write a dead port
         try:
             now = dt_util.now()
             await self.protocol.set_clock(now)
@@ -264,6 +266,12 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._reconnect_delay = RECONNECT_INITIAL_DELAY
             self.async_set_updated_data(self.data)  # clears error -> available
             await self._sync_clock_if_enabled()
+            # The clock sync awaits a write; the link (or the entry) may have
+            # gone away meanwhile. Re-check before arming the poll so we don't
+            # schedule a ^G against a now-dead link (a fresh _on_disconnect has
+            # already scheduled its own reconnect in that case).
+            if self._shutting_down or not self.protocol.connected:
+                return
             self._schedule_safety_poll()
         else:
             self._reconnect_delay = min(self._reconnect_delay * 2, RECONNECT_MAX_DELAY)
