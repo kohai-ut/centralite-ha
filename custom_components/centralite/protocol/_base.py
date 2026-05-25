@@ -117,6 +117,15 @@ class _BaseSerialProtocol(CentraliteProtocol):
             self._writer = None
         self._reader = None
 
+    @property
+    def connected(self) -> bool:
+        """True while the transport is open and the reader hasn't died.
+
+        Lets a reconnect tell a genuine success from a connection that dropped
+        again during the open/prime window (the reader sets _lost on death).
+        """
+        return self._writer is not None and not self._lost
+
     def set_load_event_callback(self, cb: LoadEventCallback) -> None:
         self._load_event_cb = cb
 

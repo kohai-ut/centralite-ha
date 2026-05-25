@@ -42,7 +42,9 @@ class FakeProtocol(CentraliteProtocol):
         self._bulk = supports_bulk
         self._scene_push = supports_scene_push
         self._bulk_loads = bulk_loads or {}
-        self._connect_error = connect_error
+        # Mutable so tests can toggle it between reconnect attempts.
+        self.connect_error = connect_error
+        self.connect_count = 0
         self.calls: list[tuple] = []
         self.connected = False
         self.load_cb = None
@@ -51,8 +53,9 @@ class FakeProtocol(CentraliteProtocol):
         self.disconnect_cb = None
 
     async def connect(self) -> None:
-        if self._connect_error is not None:
-            raise self._connect_error
+        self.connect_count += 1
+        if self.connect_error is not None:
+            raise self.connect_error
         self.connected = True
 
     async def disconnect(self) -> None:

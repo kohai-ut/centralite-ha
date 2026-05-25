@@ -37,6 +37,12 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# After an unexpected disconnect, retry the connection on an exponential backoff
+# (a transient USB/serial blip shouldn't leave entities dead until a manual
+# reload). Start quick, cap so we don't hammer a permanently-gone bridge.
+RECONNECT_INITIAL_DELAY = 5  # seconds
+RECONNECT_MAX_DELAY = 300  # seconds
+
 
 class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinates protocol state across all Centralite entities for one bridge."""
@@ -63,6 +69,10 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #   scenes: {idx: bool}              # commanded for Elegance, observed for JetStream
         self.data = {"loads": {}, "switches": {}, "scenes": {}}
         self._poll_unsub: CALLBACK_TYPE | None = None
+        self._reconnect_unsub: CALLBACK_TYPE | None = None
+        self._reconnect_delay = RECONNECT_INITIAL_DELAY
+        self._reconnecting = False
+        self._shutting_down = False
         protocol.set_load_event_callback(self._on_load_event)
         protocol.set_switch_event_callback(self._on_switch_event)
         protocol.set_scene_event_callback(self._on_scene_event)
@@ -86,25 +96,30 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         out on every attempt.
         """
         await self.protocol.connect()
-        if self.protocol.supports_bulk_query:
-            try:
-                load_states = await self.protocol.get_all_load_states()
-            except Exception:
-                _LOGGER.warning(
-                    "Initial bulk load query failed; relying on push events",
-                    exc_info=True,
-                )
-            else:
-                for idx, on in load_states.items():
-                    self.data["loads"][idx] = {"on": on, "level": 99 if on else 0}
-
+        await self._prime_loads()
         self._schedule_safety_poll()
 
+    async def _prime_loads(self) -> None:
+        """Seed initial load state from a bulk query, where the bridge supports it."""
+        if not self.protocol.supports_bulk_query:
+            return
+        try:
+            load_states = await self.protocol.get_all_load_states()
+        except Exception:
+            _LOGGER.warning(
+                "Bulk load query failed; relying on push events", exc_info=True
+            )
+        else:
+            for idx, on in load_states.items():
+                self.data["loads"][idx] = {"on": on, "level": 99 if on else 0}
+
     async def async_shutdown(self) -> None:
-        """Cancel the safety poll and disconnect from the bridge."""
-        if self._poll_unsub is not None:
-            self._poll_unsub()
-            self._poll_unsub = None
+        """Cancel timers and disconnect from the bridge."""
+        self._shutting_down = True
+        self._cancel_poll()
+        if self._reconnect_unsub is not None:
+            self._reconnect_unsub()
+            self._reconnect_unsub = None
         await self.protocol.disconnect()
 
     async def activate_scene(self, idx: int) -> None:
@@ -175,23 +190,72 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @callback
     def _on_disconnect(self, error: Exception | None) -> None:
-        """Mark all entities unavailable when the serial link drops.
+        """Mark entities unavailable on a link drop and start reconnecting.
 
-        async_set_update_error flips last_update_success to False and notifies
-        listeners, so every entity goes unavailable instead of showing stale
-        state. A reconnect path (re-open + re-prime) is future work; for now the
-        user gets an honest "unavailable" and the integration can be reloaded.
+        async_set_update_error flips last_update_success to False so every
+        entity goes unavailable instead of showing stale state, then we retry
+        the connection on a backoff (see _try_reconnect).
         """
         _LOGGER.warning("Centralite bridge connection lost: %s", error)
+        self._cancel_poll()  # poll would just raise against the dead link
         self.async_set_update_error(
             UpdateFailed(f"Centralite bridge connection lost: {error}")
         )
+        self._schedule_reconnect()
+
+    def _schedule_reconnect(self) -> None:
+        # Guarded against shutdown, an in-flight attempt, and an already-armed
+        # timer so a flurry of disconnects can't stack reconnect loops.
+        if self._shutting_down or self._reconnecting or self._reconnect_unsub is not None:
+            return
+        _LOGGER.debug("Scheduling reconnect in %ss", self._reconnect_delay)
+        self._reconnect_unsub = async_call_later(
+            self.hass, self._reconnect_delay, self._try_reconnect
+        )
+
+    async def _try_reconnect(self, _now: Any) -> None:
+        self._reconnect_unsub = None
+        if self._shutting_down:
+            return
+        self._reconnecting = True
+        success = False
+        try:
+            await self.protocol.disconnect()  # tear down the dead transport
+            await self.protocol.connect()
+            await self._prime_loads()
+            # Treat as success only if the link is still up — it may have
+            # dropped again during the open/prime window.
+            success = self.protocol.connected
+        except Exception as err:
+            _LOGGER.debug("Reconnect attempt failed (%s)", err)
+        finally:
+            self._reconnecting = False
+
+        # Re-check after the awaits: the entry may have been unloaded mid-attempt.
+        if self._shutting_down:
+            if success:
+                await self.protocol.disconnect()
+            return
+        if success:
+            _LOGGER.info("Reconnected to Centralite bridge")
+            self._reconnect_delay = RECONNECT_INITIAL_DELAY
+            self.async_set_updated_data(self.data)  # clears error -> available
+            self._schedule_safety_poll()
+        else:
+            self._reconnect_delay = min(self._reconnect_delay * 2, RECONNECT_MAX_DELAY)
+            self._schedule_reconnect()
+
+    def _cancel_poll(self) -> None:
+        if self._poll_unsub is not None:
+            self._poll_unsub()
+            self._poll_unsub = None
 
     def _schedule_safety_poll(self) -> None:
         # The safety poll uses the bulk-state command. Push-only bridges
         # (JetStream) have none, so there is nothing to poll — skip it rather
         # than scheduling a callback that raises every interval.
-        if not self.protocol.supports_bulk_query:
+        self._cancel_poll()
+        if self._shutting_down or not self.protocol.supports_bulk_query:
             return
         interval = self.config_entry.options.get(OPT_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         if not interval:
