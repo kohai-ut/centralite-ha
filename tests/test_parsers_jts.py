@@ -63,6 +63,51 @@ def test_skips_inactive_and_zero_ids():
     assert parse_jts(xml).loads == {2: "Active"}
 
 
+def test_buttons_parsed_and_mapped():
+    """Configured buttons (ID 0-2) map to protocol buttons 1-3; rest skipped."""
+    device = """\
+    <Device>
+      <DeviceID>5</DeviceID><Name>Den</Name>
+      <Dimmer>true</Dimmer><SendThirdParty>true</SendThirdParty><Active>true</Active>
+      <buttonList>
+        <Button><ID>0</ID><tap><BtnAction>1</BtnAction></tap></Button>
+        <Button><ID>1</ID><tap><BtnAction>0</BtnAction></tap>
+          <pressandhold><BtnAction>2</BtnAction></pressandhold></Button>
+        <Button><ID>2</ID><tap><BtnAction>0</BtnAction></tap></Button>
+        <Button><ID>5</ID><tap><BtnAction>3</BtnAction></tap></Button>
+      </buttonList>
+    </Device>"""
+    cfg = parse_jts(_doc(devices=device))
+    # ID0 configured (tap) -> btn1; ID1 configured (hold) -> btn2;
+    # ID2 has no non-zero action (skip); ID5 out of protocol range (skip).
+    assert set(cfg.buttons) == {(5, 1), (5, 2)}
+    assert cfg.buttons[(5, 1)] == "Den Button 1"
+
+
+def test_button_action_compared_numerically():
+    """BtnAction '00' / ' 0 ' are numerically zero -> not configured."""
+    device = """\
+    <Device>
+      <DeviceID>5</DeviceID><Name>Den</Name>
+      <SendThirdParty>true</SendThirdParty><Active>true</Active>
+      <buttonList>
+        <Button><ID>0</ID><tap><BtnAction>00</BtnAction></tap></Button>
+        <Button><ID>1</ID><tap><BtnAction> 0 </BtnAction></tap></Button>
+      </buttonList>
+    </Device>"""
+    assert parse_jts(_doc(devices=device)).buttons == {}
+
+
+def test_buttons_skipped_for_non_thirdparty_device():
+    device = """\
+    <Device>
+      <DeviceID>5</DeviceID><Name>Hidden</Name>
+      <SendThirdParty>false</SendThirdParty><Active>true</Active>
+      <buttonList><Button><ID>0</ID><tap><BtnAction>1</BtnAction></tap></Button></buttonList>
+    </Device>"""
+    assert parse_jts(_doc(devices=device)).buttons == {}
+
+
 def test_unnamed_device_kept_with_empty_name():
     """JetStream devices are all real; an unnamed one is still a real load."""
     cfg = parse_jts(_doc(devices=_device(5, "")))

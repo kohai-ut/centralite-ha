@@ -175,6 +175,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 load_ids: set[int] = set()
                 scene_ids: set[int] = set()
                 switch_ids: set[int] = set()
+                button_pairs: set[tuple[int, int]] = set()  # JetStream (device, button)
                 nondimmable: set[int] = set()
                 disabled: set[int] = set()
 
@@ -199,6 +200,11 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         scene_ids.add(idx)
                         if name:
                             scene_names[str(idx)] = name
+                    # Configured keypad buttons -> button switch entities.
+                    for (dev, btn), label in jts.buttons.items():
+                        button_pairs.add((dev, btn))
+                        if label:
+                            switch_names[f"{dev:03d}.{btn:02d}"] = label
                 elif import_text:
                     # Elegance (and reserved eLite) use the .elg INI parser.
                     cfg = parse_elg(import_text)
@@ -261,7 +267,13 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._data[CONF_DISABLED_LOADS] = sorted(disabled)
                 self._data[CONF_SCENE_IDS] = sorted(scene_ids)
                 if self._data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM:
-                    self._data[CONF_BUTTON_IDS] = [[idx, 1] for idx in sorted(switch_ids)]
+                    # Buttons from the .jts plus any hand-entered device IDs
+                    # (which default to button 1).
+                    button_pairs |= {(idx, 1) for idx in switch_ids}
+                    # Validate button device numbers explicitly against the
+                    # switch bound (don't rely on it equalling the load bound).
+                    _check_range("switch", {d for d, _ in button_pairs}, system_type)
+                    self._data[CONF_BUTTON_IDS] = [list(p) for p in sorted(button_pairs)]
                 else:
                     self._data[CONF_SWITCH_IDS] = sorted(switch_ids)
 
