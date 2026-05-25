@@ -225,24 +225,65 @@ async def test_get_load_level_ignores_unrelated_dev_push():
 
 
 async def test_get_device_name():
+    """Real reply format: NAM + 3-digit device + space-padded name + CRLF."""
     p, reader, w = await _make_protocol()
     try:
-        task = asyncio.create_task(_feed_after(reader, b"NAMUpstairs Hall Lights\r"))
-        name = await p.get_device_name(1)
-        assert name == "Upstairs Hall Lights"
-        assert bytes(w.buf) == b"^N001"
+        # Exact bytes captured from a real JetStream bridge.
+        task = asyncio.create_task(
+            _feed_after(reader, b"NAM002GAME RM E-1-E GAME CANS   \r\n")
+        )
+        name = await p.get_device_name(2)
+        assert name == "GAME RM E-1-E GAME CANS"  # NAM + "002" stripped, padding trimmed
+        assert bytes(w.buf) == b"^N002"
         await task
     finally:
         await p.disconnect()
 
 
 async def test_get_device_name_empty_returns_none():
+    """A configured-but-unnamed device echoes NAM + index with no name."""
     p, reader, w = await _make_protocol()
     try:
-        task = asyncio.create_task(_feed_after(reader, b"NAM\r"))
+        task = asyncio.create_task(_feed_after(reader, b"NAM001   \r\n"))
         name = await p.get_device_name(1)
         assert name is None
         await task
+    finally:
+        await p.disconnect()
+
+
+async def test_get_device_name_ignores_wrong_device():
+    """A NAM for a different device must not fulfill this request."""
+    p, reader, w = await _make_protocol()
+    try:
+        async def feed():
+            await asyncio.sleep(0.01)
+            reader.feed_data(b"NAM099Some Other Device\r\n")  # wrong idx
+            await asyncio.sleep(0.01)
+            reader.feed_data(b"NAM001Hall Lights\r\n")  # the one we asked for
+        task = asyncio.create_task(feed())
+        name = await p.get_device_name(1)
+        assert name == "Hall Lights"
+        await task
+    finally:
+        await p.disconnect()
+
+
+async def test_crlf_framed_events_both_parse():
+    """JetStream ends lines with CRLF; a stray LF must not corrupt the next line.
+
+    Without LF handling in the reader, the second event would be read as
+    "\\nACT04401T" and fail length/prefix dispatch.
+    """
+    p, reader, _w = await _make_protocol()
+    try:
+        loads, switches = [], []
+        p.set_load_event_callback(loads.append)
+        p.set_switch_event_callback(switches.append)
+        reader.feed_data(b"DEV00550\r\nACT04401T\r\n")
+        await asyncio.sleep(0.02)
+        assert loads == [LoadEvent(idx=5, level=50)]
+        assert switches == [SwitchEvent(idx=44, action="tap", button=1)]
     finally:
         await p.disconnect()
 

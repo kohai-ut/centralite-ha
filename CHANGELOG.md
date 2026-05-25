@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Fixed
 
+- **JetStream CRLF line framing.** JetStream terminates every line with `CR`+`LF`, but the reader split on `CR` only, leaving the `LF` to become the first byte of the next line — which then failed length/prefix dispatch, so every spontaneous `DEV`/`ACT`/`SCN` event after the first was mis-parsed on real hardware. The reader now skips `LF`. (Elegance uses `CR` only and is unaffected.)
+- **JetStream `^N` device-name parsing.** The reply format (confirmed on hardware) is `NAM` + the 3-digit device number + the name, e.g. `NAM002GAME RM E-1-E GAME CANS`. The parser stripped only `NAM`, so it returned the device number glued to the name (`002GAME RM…`). It now strips the index too and matches the specific device so an unrelated `NAM` can't fulfill the request.
+
 - **Integration now declares its `serialx` dependency.** `manifest.json` had an empty `requirements`, so a HACS install would fail on first connect because Home Assistant never installed `serialx` (it is not a HA core dependency).
 - **Options flow no longer crashes on open.** It assigned the now read-only `OptionsFlow.config_entry`, which raises on HA 2024.11+. Reworked to the current pattern where `self.config_entry` is framework-provided.
 - **JetStream is correctly treated as push-only.** JetStream has no bulk-state command (`^G`/`^H` do not exist in its protocol); the old code sent them and timed out on every initial query and safety poll, logging a traceback every interval. Added a `supports_bulk_query` capability flag; the coordinator now skips priming and the safety poll for JetStream and relies on spontaneous `DEV`/`ACT`/`SCN` output.

@@ -178,17 +178,25 @@ class JetStreamProtocol(_BaseSerialProtocol):
         raise ProtocolError("JetStream has no bulk switch-state query; state is push-only")
 
     async def get_device_name(self, idx: int) -> str | None:
-        """Query the bridge for a device's stored friendly name (JetStream-only)."""
+        """Query the bridge for a device's stored friendly name (JetStream-only).
+
+        Verified reply format on hardware: ``NAM`` + the 3-digit device number +
+        the space-padded name, e.g. ``NAM002GAME RM E-1-E GAME CANS   `` (then
+        CRLF, stripped by the reader). We match the specific device so an
+        unrelated NAM can't fulfill this request, and strip both the ``NAM``
+        prefix and the echoed index before returning the name.
+        """
         self._validate_load_idx(idx)
+        expected = f"{NAM_PREFIX}{idx:03d}"
 
         def matches(line: str) -> bool:
-            return line.startswith(NAM_PREFIX)
+            return line.startswith(expected)
 
         try:
             response = await self._sendrecv(f"^N{idx:03d}", matches=matches)
         except ProtocolError:
             return None
-        name = response[len(NAM_PREFIX) :].strip()
+        name = response[len(expected) :].strip()
         return name or None
 
     async def increment_load(self, idx: int, value: int = 1, rate: int = 0) -> None:
