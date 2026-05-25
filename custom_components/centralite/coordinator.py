@@ -12,16 +12,20 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.const import CONF_DEVICE_ID, CONF_TYPE
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_SUBTYPE,
     CONF_SYSTEM_TYPE,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
+    EVENT_BUTTON,
     OPT_POLL_INTERVAL,
     SYSTEM_LABELS,
+    button_subtype,
 )
 from .protocol import LoadEvent, SceneEvent, SwitchEvent
 
@@ -59,6 +63,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         #   scenes: {idx: bool}              # commanded for Elegance, observed for JetStream
         self.data = {"loads": {}, "switches": {}, "scenes": {}}
         self._poll_unsub: CALLBACK_TYPE | None = None
+        self._device_id: str | None = None
         protocol.set_load_event_callback(self._on_load_event)
         protocol.set_switch_event_callback(self._on_switch_event)
         protocol.set_scene_event_callback(self._on_scene_event)
@@ -129,6 +134,39 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # until the next event clears it.
         self.data["switches"][key] = event.action != "release"
         self.async_set_updated_data(self.data)
+        self._fire_button_event(event)
+
+    @callback
+    def _fire_button_event(self, event: SwitchEvent) -> None:
+        """Fire a bus event for this physical button activity.
+
+        Drives device triggers (device_trigger.py) so automations can run on a
+        physical keypad press/tap/release. The event carries the bridge's HA
+        device id plus the action and a button subtype that device_trigger's
+        enumeration matches.
+        """
+        device_id = self._bridge_device_id()
+        if device_id is None:
+            return  # device not registered yet (no entities added); nothing to target
+        self.hass.bus.async_fire(
+            EVENT_BUTTON,
+            {
+                CONF_DEVICE_ID: device_id,
+                CONF_TYPE: event.action,
+                CONF_SUBTYPE: button_subtype(event.idx, event.button),
+            },
+        )
+
+    def _bridge_device_id(self) -> str | None:
+        """HA device-registry id of the bridge device (cached after first lookup)."""
+        if self._device_id is None:
+            from homeassistant.helpers import device_registry as dr
+
+            device = dr.async_get(self.hass).async_get_device(
+                identifiers={(DOMAIN, self.config_entry.entry_id)}
+            )
+            self._device_id = device.id if device else None
+        return self._device_id
 
     def _on_scene_event(self, event: SceneEvent) -> None:
         self.data["scenes"][event.idx] = event.active
