@@ -22,6 +22,18 @@ CentraLite Systems made commercial lighting controllers that talk to switches an
 
 A 19200-baud USB-to-serial adapter on the HA host (Raspberry Pi, NUC, VM) plugs into the bridge's RS-232 port. `/dev/serial/by-id/...` paths are recommended for stability across reboots.
 
+## Which integration should I use? (vs. the built-in LiteJet integration)
+
+Home Assistant ships a built-in [**LiteJet**](https://www.home-assistant.io/integrations/litejet/) integration (via [`pylitejet`](https://github.com/joncar/pylitejet)). LiteJet is a sibling CentraLite product, and because these systems share a family of RS-232 protocols, the built-in integration also advertises Elegance and JetStream support. Here's how to choose:
+
+| Your system | Use |
+|---|---|
+| **LiteJet** | The [built-in LiteJet integration](https://www.home-assistant.io/integrations/litejet/) — it's purpose-built for LiteJet and well maintained. This integration does **not** target LiteJet. |
+| **JetStream** | **This integration.** JetStream has no bulk-state command (`^G`/`^H`), which the LiteJet library requires to connect, so the built-in integration cannot talk to a JetStream bridge. This integration speaks JetStream's native `DEV`/`ACT`/`SCN` protocol. |
+| **Elegance** | **This integration** is recommended, especially for larger installs. The built-in integration handles Elegance only through the shared LiteJet command set: it reads just the first 48 loads (this integration handles the full 192-load address space) and mis-parses Elegance's physical-switch/keypad events. For a small, loads-only Elegance setup the built-in one may suffice. |
+
+In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not sure which CentraLite system you have, check the controller's model or the programming software it shipped with.
+
 ## Features
 
 - **Native HA config flow** — UI setup, no YAML editing required
