@@ -269,6 +269,34 @@ async def test_get_device_name_ignores_wrong_device():
         await p.disconnect()
 
 
+async def test_scan_device_names_collects_responders():
+    """scan_device_names returns names for devices that reply, skipping the rest."""
+    p, _r, _w = await _make_protocol()
+    try:
+        replies = {2: "Game Cans", 5: "Den"}  # 3 and 4 are "unconfigured" (silent)
+
+        async def fake_get_name(idx, *, timeout=0.0):
+            return replies.get(idx)
+
+        p.get_device_name = fake_get_name  # type: ignore[method-assign]
+        found = await p.scan_device_names(start=2, end=5)
+        assert found == {2: "Game Cans", 5: "Den"}
+    finally:
+        await p.disconnect()
+
+
+async def test_scan_skips_empty_names():
+    p, _r, _w = await _make_protocol()
+    try:
+        async def fake_get_name(idx, *, timeout=0.0):
+            return "" if idx == 2 else None  # configured-but-unnamed -> skip
+
+        p.get_device_name = fake_get_name  # type: ignore[method-assign]
+        assert await p.scan_device_names(start=1, end=3) == {}
+    finally:
+        await p.disconnect()
+
+
 async def test_crlf_framed_events_both_parse():
     """JetStream ends lines with CRLF; a stray LF must not corrupt the next line.
 

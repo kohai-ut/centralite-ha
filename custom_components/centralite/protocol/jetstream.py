@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 
 from . import LoadEvent, SceneEvent, SwitchEvent
-from ._base import _BaseSerialProtocol
+from ._base import COMMAND_TIMEOUT, _BaseSerialProtocol
 from .common import ProtocolError
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,6 +48,12 @@ JETSTREAM_MAX_BUTTONS_PER_SWITCH = 3
 # USB-to-serial-adapter quirk, possibly a JetStream firmware quirk. Either
 # way, preserving the workaround.
 JETSTREAM_INTER_COMMAND_DELAY = 0.1
+
+# Per-probe timeout for the ^N discovery scan. Unconfigured devices are silent,
+# so most probes hit this timeout; keep it short so scanning the whole range
+# stays in the tens-of-seconds range rather than minutes. A configured device
+# replies well under this on a healthy link.
+SCAN_PROBE_TIMEOUT = 0.3
 
 DEV_PREFIX = "DEV"
 ACT_PREFIX = "ACT"
@@ -177,7 +183,9 @@ class JetStreamProtocol(_BaseSerialProtocol):
         # arrives via spontaneous ACT events keyed (device, button).
         raise ProtocolError("JetStream has no bulk switch-state query; state is push-only")
 
-    async def get_device_name(self, idx: int) -> str | None:
+    async def get_device_name(
+        self, idx: int, *, timeout: float = COMMAND_TIMEOUT
+    ) -> str | None:
         """Query the bridge for a device's stored friendly name (JetStream-only).
 
         Verified reply format on hardware: ``NAM`` + the 3-digit device number +
@@ -185,6 +193,10 @@ class JetStreamProtocol(_BaseSerialProtocol):
         CRLF, stripped by the reader). We match the specific device so an
         unrelated NAM can't fulfill this request, and strip both the ``NAM``
         prefix and the echoed index before returning the name.
+
+        Returns None if the device is unconfigured: on real hardware an
+        unconfigured index stays silent, so the request just times out. A short
+        `timeout` keeps a discovery scan over empty slots from dragging.
         """
         self._validate_load_idx(idx)
         expected = f"{NAM_PREFIX}{idx:03d}"
@@ -193,11 +205,36 @@ class JetStreamProtocol(_BaseSerialProtocol):
             return line.startswith(expected)
 
         try:
-            response = await self._sendrecv(f"^N{idx:03d}", matches=matches)
+            response = await self._sendrecv(
+                f"^N{idx:03d}", matches=matches, timeout=timeout
+            )
         except ProtocolError:
             return None
         name = response[len(expected) :].strip()
         return name or None
+
+    async def scan_device_names(
+        self,
+        *,
+        start: int = 1,
+        end: int = JETSTREAM_MAX_LOADS,
+        timeout: float = SCAN_PROBE_TIMEOUT,
+    ) -> dict[int, str]:
+        """Discover configured devices by querying ``^N`` across a range.
+
+        JetStream has no "list devices" command, so we probe each index. A
+        configured device replies with its name; an unconfigured one is silent
+        and times out at `timeout` (kept short so empty slots don't stall the
+        scan). Returns {device_idx: name} for every index that responded with a
+        non-empty name. Devices with an empty stored name are skipped (no useful
+        name to import); use a config file to capture those.
+        """
+        found: dict[int, str] = {}
+        for idx in range(start, end + 1):
+            name = await self.get_device_name(idx, timeout=timeout)
+            if name:
+                found[idx] = name
+        return found
 
     async def increment_load(self, idx: int, value: int = 1, rate: int = 0) -> None:
         self._validate_load_idx(idx)
