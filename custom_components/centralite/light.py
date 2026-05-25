@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode, LightEntity
 
 from .const import (
+    CONF_DISABLED_LOADS,
     CONF_LOAD_IDS,
     DOMAIN,
     OPT_LOAD_NAMES,
@@ -32,8 +33,16 @@ async def async_setup_entry(
     # Loads flagged DIMMER=N in the .elg import are on/off relays, not dimmers.
     # Absent (manual ID entry, or no .elg): default to dimmable.
     nondimmable = set(coordinator.config_entry.options.get(OPT_NONDIMMABLE_LOADS, []))
+    # Loads referenced by a scene/button but never named: created hidden so they
+    # don't clutter the UI, but available to enable.
+    disabled = set(entry.data.get(CONF_DISABLED_LOADS, []))
     async_add_entities(
-        CentraliteLight(coordinator, idx, dimmable=idx not in nondimmable)
+        CentraliteLight(
+            coordinator,
+            idx,
+            dimmable=idx not in nondimmable,
+            enabled_default=idx not in disabled,
+        )
         for idx in load_ids
     )
 
@@ -47,11 +56,17 @@ class CentraliteLight(CentraliteBaseEntity, LightEntity):
     """
 
     def __init__(
-        self, coordinator: CentraliteCoordinator, idx: int, *, dimmable: bool = True
+        self,
+        coordinator: CentraliteCoordinator,
+        idx: int,
+        *,
+        dimmable: bool = True,
+        enabled_default: bool = True,
     ) -> None:
         super().__init__(coordinator)
         self._idx = idx
         self._dimmable = dimmable
+        self._attr_entity_registry_enabled_default = enabled_default
         mode = ColorMode.BRIGHTNESS if dimmable else ColorMode.ONOFF
         self._attr_color_mode = mode
         self._attr_supported_color_modes = {mode}

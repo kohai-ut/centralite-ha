@@ -17,6 +17,10 @@ from dataclasses import dataclass, field
 SECTION_RE = re.compile(r"^\[(.+?)\]\s*$")
 LOAD_HEADER_RE = re.compile(r"^LOAD\s+(\d+)$")
 SCENE_HEADER_RE = re.compile(r"^SCENE\s+(\d+)-\s*(.+)$")
+# A keypad button section header is a letter A-P plus a button number, e.g. [A1].
+BUTTON_HEADER_RE = re.compile(r"^[A-P]\d+$")
+# Inside a scene body, each controlled load is listed as "LOAD_053- Some Name".
+SCENE_LOAD_RE = re.compile(r"^LOAD_(\d+)-")
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,11 +32,61 @@ class ElgConfig:
     this lets the light platform expose them as on/off lights instead of giving
     every load a meaningless brightness slider. Loads with no DIMMER key default
     to True (dimmable) to preserve the prior all-dimmable behavior.
+
+    `referenced_loads` is the set of load numbers actually used somewhere in the
+    config — controlled by a scene or assigned to an active keypad button. A
+    `.elg` lists all 192 load slots (most are unnamed, unused defaults), so the
+    config flow creates only loads that are named OR referenced, skipping the
+    phantom slots.
     """
 
     loads: dict[int, str] = field(default_factory=dict)
     scenes: dict[int, str] = field(default_factory=dict)
     dimmable: dict[int, bool] = field(default_factory=dict)
+    referenced_loads: set[int] = field(default_factory=set)
+
+
+def _referenced_load_ids(text: str) -> set[int]:
+    """Collect loads used by any scene or assigned to any active keypad button.
+
+    Scene bodies list controlled loads as ``LOAD_nnn- name``. Keypad button
+    sections (``[A1]`` .. ``[P24]``) assign a target with ``LOAD/SCENE=L`` and
+    ``#=nnn`` and are gated by ``ACTIVE=1``. We group by section first so a
+    button's multi-line fields can be evaluated together.
+    """
+    referenced: set[int] = set()
+    section: str | None = None
+    fields: dict[str, str] = {}
+
+    def flush_button() -> None:
+        if section and BUTTON_HEADER_RE.match(section):
+            if (
+                fields.get("LOAD/SCENE") == "L"
+                and fields.get("ACTIVE") == "1"
+                and fields.get("#", "").isdigit()
+            ):
+                referenced.add(int(fields["#"]))
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip("\r")
+        section_match = SECTION_RE.match(line)
+        if section_match:
+            flush_button()
+            section = section_match.group(1).strip()
+            fields = {}
+            continue
+        if section is None:
+            continue
+        if section.startswith("SCENE "):
+            load_match = SCENE_LOAD_RE.match(line.strip())
+            if load_match:
+                referenced.add(int(load_match.group(1)))
+        elif BUTTON_HEADER_RE.match(section) and "=" in line:
+            key, _, value = line.strip().partition("=")
+            fields[key.strip()] = value.strip()
+
+    flush_button()  # finalize the last section
+    return referenced
 
 
 def parse_elg(text: str) -> ElgConfig:
@@ -89,7 +143,12 @@ def parse_elg(text: str) -> ElgConfig:
                 # dimmable; everything else (N, blank) as on/off.
                 dimmable[current_load] = value.strip().upper().startswith("Y")
 
-    return ElgConfig(loads=loads, scenes=scenes, dimmable=dimmable)
+    return ElgConfig(
+        loads=loads,
+        scenes=scenes,
+        dimmable=dimmable,
+        referenced_loads=_referenced_load_ids(text),
+    )
 
 
 def parse_csv_ids(text: str) -> list[int]:

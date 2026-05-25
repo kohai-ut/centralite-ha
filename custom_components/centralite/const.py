@@ -26,6 +26,9 @@ CONF_LOAD_IDS: Final = "load_ids"
 CONF_SWITCH_IDS: Final = "switch_ids"  # Elegance: list[int]
 CONF_BUTTON_IDS: Final = "button_ids"  # JetStream: list[[device, button]]
 CONF_SCENE_IDS: Final = "scene_ids"
+# Loads created but disabled-by-default (referenced by a scene/button but never
+# named in the .elg). Present in CONF_LOAD_IDS; users can enable them in the UI.
+CONF_DISABLED_LOADS: Final = "disabled_loads"
 
 # Options keys
 OPT_LOAD_NAMES: Final = "load_names"
