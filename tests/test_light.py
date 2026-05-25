@@ -117,3 +117,13 @@ async def test_nondimmable_turn_on_ignores_brightness(hass):
     light = CentraliteLight(coord, 3, dimmable=False)
     await light.async_turn_on(**{ATTR_BRIGHTNESS: 128})
     assert coord.protocol.calls == [("activate_load", 3)]
+
+
+async def test_enabled_default_flag(hass):
+    """Used-but-unnamed loads are created disabled; named/normal loads enabled."""
+    coord = _coord(hass)
+    assert CentraliteLight(coord, 1).entity_registry_enabled_default is True
+    assert (
+        CentraliteLight(coord, 18, enabled_default=False).entity_registry_enabled_default
+        is False
+    )

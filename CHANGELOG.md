@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- **Phantom-load filtering on `.elg` import.** A `.elg` lists all 192 load slots, most of which are unused defaults. Only loads that are named, or referenced by a scene or an active keypad button, are created; the rest are skipped. Referenced-but-unnamed loads are created disabled-by-default so they can be enabled in the UI without re-importing. Hand-entered load IDs are always created enabled. (One real config dropped from 192 entities to 73.)
 - **Load-type-aware light entities.** The `.elg` parser now reads each load's `DIMMER=Y/N` flag; loads flagged non-dimmable are exposed as on/off lights (`ColorMode.ONOFF`) instead of dimmers with a non-functional brightness slider. (In a typical install most loads are on/off relays.) Manual-ID setups, with no `.elg`, still default to dimmable.
 - **"Which integration should I use?" README section** comparing this integration with the built-in Home Assistant LiteJet integration, so LiteJet owners are pointed to the built-in one and Elegance/JetStream owners know to use this.
 

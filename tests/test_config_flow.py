@@ -14,6 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.centralite.config_flow import SYSTEM_OPTIONS
 from custom_components.centralite.const import (
     CONF_BAUD,
+    CONF_DISABLED_LOADS,
     CONF_LOAD_IDS,
     CONF_PORT,
     CONF_SCENE_IDS,
@@ -76,6 +77,41 @@ async def test_elg_import_records_nondimmable_loads(hass):
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_LOAD_IDS] == [1, 2, 3]
     assert result["options"][OPT_NONDIMMABLE_LOADS] == [2, 3]
+
+
+async def test_elg_import_skips_phantom_loads(hass):
+    """Only named or referenced loads are created; unused slots are skipped.
+
+    Load 1 named, load 18 referenced-by-scene (unnamed), load 50 = phantom
+    (unnamed, unreferenced) -> skipped. Load 18 -> created but disabled.
+    """
+    result = await _advance_to_import(hass)
+    elg = (
+        "[LOAD 1]\nNAME=Hall\nDIMMER=Y\n"
+        "[LOAD 18]\nNAME=\nDIMMER=Y\n"
+        "[LOAD 50]\nNAME=\nDIMMER=Y\n"
+        "[SCENE 04- Path]\nNAME=Path\nLOAD_001- Hall\nLOAD_018- Landing\n"
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": elg, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_LOAD_IDS] == [1, 18]  # 50 (phantom) skipped
+    assert result["data"][CONF_DISABLED_LOADS] == [18]  # referenced but unnamed
+
+
+async def test_manual_load_ids_always_enabled(hass):
+    """A hand-typed load ID is never disabled even if also unnamed in the .elg."""
+    result = await _advance_to_import(hass)
+    elg = "[LOAD 18]\nNAME=\n[SCENE 04- P]\nNAME=P\nLOAD_018- x\n"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": elg, "load_ids_csv": "18", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_LOAD_IDS] == [18]
+    assert CONF_DISABLED_LOADS not in result["data"]  # explicit entry => enabled
 
 
 async def test_csv_only_flow(hass):

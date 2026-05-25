@@ -24,6 +24,7 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_BAUD,
     CONF_BUTTON_IDS,
+    CONF_DISABLED_LOADS,
     CONF_LOAD_IDS,
     CONF_PORT,
     CONF_SCENE_IDS,
@@ -162,6 +163,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 scene_ids: set[int] = set()
                 switch_ids: set[int] = set()
                 nondimmable: set[int] = set()
+                disabled: set[int] = set()
 
                 elg_text = user_input.get("elg_text", "").strip()
                 if elg_text:
@@ -172,10 +174,20 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         # (not supported yet) or the wrong file. Tell the user
                         # rather than silently importing zero devices.
                         raise ValueError("unrecognized import text")
-                    for idx, name in cfg.loads.items():
+                    # A .elg lists all 192 load slots, most unnamed/unused. Create
+                    # only loads that are named OR referenced by a scene/keypad
+                    # button; skip the phantom defaults. Named loads are enabled;
+                    # used-but-unnamed loads are created disabled-by-default so
+                    # they can be turned on in HA's UI without a re-import.
+                    named = {idx for idx, name in cfg.loads.items() if name}
+                    used = named | (cfg.referenced_loads & set(cfg.loads))
+                    for idx in used:
                         load_ids.add(idx)
+                        name = cfg.loads.get(idx, "")
                         if name:
                             load_names[str(idx)] = name
+                        else:
+                            disabled.add(idx)
                         if not cfg.dimmable.get(idx, True):
                             nondimmable.add(idx)
                     for idx, name in cfg.scenes.items():
@@ -183,7 +195,10 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         if name:
                             scene_names[str(idx)] = name
 
-                load_ids.update(parse_csv_ids(user_input.get("load_ids_csv", "")))
+                # IDs typed by hand are explicit intent: always created enabled.
+                csv_loads = set(parse_csv_ids(user_input.get("load_ids_csv", "")))
+                load_ids.update(csv_loads)
+                disabled -= csv_loads
                 scene_ids.update(parse_csv_ids(user_input.get("scene_ids_csv", "")))
                 switch_ids.update(parse_csv_ids(user_input.get("switch_ids_csv", "")))
 
@@ -193,6 +208,8 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _check_range("switch", switch_ids, system_type)
 
                 self._data[CONF_LOAD_IDS] = sorted(load_ids)
+                if disabled:
+                    self._data[CONF_DISABLED_LOADS] = sorted(disabled)
                 self._data[CONF_SCENE_IDS] = sorted(scene_ids)
                 if self._data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM:
                     self._data[CONF_BUTTON_IDS] = [[idx, 1] for idx in sorted(switch_ids)]

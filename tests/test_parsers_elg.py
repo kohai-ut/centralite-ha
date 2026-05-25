@@ -170,6 +170,53 @@ def test_dimmer_lowercase_and_blank():
     assert result.dimmable == {1: True, 2: False, 3: False}
 
 
+# --- referenced-load tests (scene + keypad button) ---
+
+
+def test_referenced_loads_from_scene():
+    text = """\
+[LOAD 001]
+  NAME=Hall
+[LOAD 018]
+  NAME=
+[SCENE 04- Path]
+  NAME=Path
+  NUMLOADS=02
+  LOAD_001- Hall
+  DIM_LEVEL=080
+  RATE=003
+  LOAD_018- Landing
+  DIM_LEVEL=100
+  RATE=000
+"""
+    result = parse_elg(text)
+    assert result.referenced_loads == {1, 18}
+
+
+def test_referenced_loads_from_active_button_only():
+    """LOAD/SCENE=L with ACTIVE=1 counts; scene-target or inactive buttons don't."""
+    text = """\
+[A1]
+  LOAD/SCENE=L
+  #=12
+  ACTIVE=1
+[A2]
+  LOAD/SCENE=L
+  #=99
+  ACTIVE=0
+[A3]
+  LOAD/SCENE=S
+  #=4
+  ACTIVE=1
+"""
+    result = parse_elg(text)
+    assert result.referenced_loads == {12}  # not 99 (inactive), not 4 (scene)
+
+
+def test_referenced_loads_empty_when_none():
+    assert parse_elg("[LOAD 001]\n  NAME=Solo\n").referenced_loads == set()
+
+
 # --- parse_csv_ids tests ---
 
 
