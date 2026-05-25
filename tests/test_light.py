@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.light import ATTR_BRIGHTNESS
+from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.centralite.const import (
@@ -89,3 +89,31 @@ async def test_name_from_options(hass):
     coord = _coord(hass, {OPT_LOAD_NAMES: {"1": "Kitchen"}})
     assert CentraliteLight(coord, 1)._attr_name == "Kitchen"
     assert CentraliteLight(coord, 2)._attr_name == "Load 002"
+
+
+# --- Load-type (dimmable vs on/off) ---
+
+
+async def test_dimmable_load_is_brightness(hass):
+    light = CentraliteLight(_coord(hass), 1, dimmable=True)
+    assert light.color_mode is ColorMode.BRIGHTNESS
+    assert light.supported_color_modes == {ColorMode.BRIGHTNESS}
+
+
+async def test_nondimmable_load_is_onoff(hass):
+    """A DIMMER=N relay should be an on/off light, not a brightness slider."""
+    coord = _coord(hass)
+    coord.data["loads"][3] = {"on": True, "level": 99}
+    light = CentraliteLight(coord, 3, dimmable=False)
+    assert light.color_mode is ColorMode.ONOFF
+    assert light.supported_color_modes == {ColorMode.ONOFF}
+    assert light.brightness is None
+    assert light.is_on is True
+
+
+async def test_nondimmable_turn_on_ignores_brightness(hass):
+    """Even if a brightness arrives, an on/off load just activates (no set_level)."""
+    coord = _coord(hass)
+    light = CentraliteLight(coord, 3, dimmable=False)
+    await light.async_turn_on(**{ATTR_BRIGHTNESS: 128})
+    assert coord.protocol.calls == [("activate_load", 3)]

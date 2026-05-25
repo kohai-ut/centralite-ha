@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- **Load-type-aware light entities.** The `.elg` parser now reads each load's `DIMMER=Y/N` flag; loads flagged non-dimmable are exposed as on/off lights (`ColorMode.ONOFF`) instead of dimmers with a non-functional brightness slider. (In a typical install most loads are on/off relays.) Manual-ID setups, with no `.elg`, still default to dimmable.
+- **"Which integration should I use?" README section** comparing this integration with the built-in Home Assistant LiteJet integration, so LiteJet owners are pointed to the built-in one and Elegance/JetStream owners know to use this.
+
 ### Fixed
 
 - **Integration now declares its `serialx` dependency.** `manifest.json` had an empty `requirements`, so a HACS install would fail on first connect because Home Assistant never installed `serialx` (it is not a HA core dependency).

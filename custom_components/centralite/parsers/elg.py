@@ -21,10 +21,18 @@ SCENE_HEADER_RE = re.compile(r"^SCENE\s+(\d+)-\s*(.+)$")
 
 @dataclass(frozen=True, slots=True)
 class ElgConfig:
-    """Result of parsing a .elg file."""
+    """Result of parsing a .elg file.
+
+    `dimmable` maps each load number to whether it is a dimmer (DIMMER=Y) or a
+    plain on/off relay (DIMMER=N). Most loads in a real install are relays, so
+    this lets the light platform expose them as on/off lights instead of giving
+    every load a meaningless brightness slider. Loads with no DIMMER key default
+    to True (dimmable) to preserve the prior all-dimmable behavior.
+    """
 
     loads: dict[int, str] = field(default_factory=dict)
     scenes: dict[int, str] = field(default_factory=dict)
+    dimmable: dict[int, bool] = field(default_factory=dict)
 
 
 def parse_elg(text: str) -> ElgConfig:
@@ -42,6 +50,7 @@ def parse_elg(text: str) -> ElgConfig:
     """
     loads: dict[int, str] = {}
     scenes: dict[int, str] = {}
+    dimmable: dict[int, bool] = {}
 
     current_load: int | None = None
 
@@ -60,6 +69,7 @@ def parse_elg(text: str) -> ElgConfig:
             if load_match:
                 current_load = int(load_match.group(1))
                 loads.setdefault(current_load, "")
+                dimmable.setdefault(current_load, True)
                 continue
 
             scene_match = SCENE_HEADER_RE.match(section)
@@ -71,10 +81,15 @@ def parse_elg(text: str) -> ElgConfig:
 
         if current_load is not None and "=" in stripped:
             key, _, value = stripped.partition("=")
-            if key.strip() == "NAME":
+            key = key.strip()
+            if key == "NAME":
                 loads[current_load] = value.strip()
+            elif key == "DIMMER":
+                # Values seen: "Y" / "N". Treat anything starting with Y as
+                # dimmable; everything else (N, blank) as on/off.
+                dimmable[current_load] = value.strip().upper().startswith("Y")
 
-    return ElgConfig(loads=loads, scenes=scenes)
+    return ElgConfig(loads=loads, scenes=scenes, dimmable=dimmable)
 
 
 def parse_csv_ids(text: str) -> list[int]:

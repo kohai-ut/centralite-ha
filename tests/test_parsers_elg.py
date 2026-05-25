@@ -142,6 +142,34 @@ REV 1.1
     }
 
 
+# --- DIMMER / load-type tests ---
+
+
+def test_dimmer_flag_parsed():
+    text = """\
+[LOAD 001]
+  NAME=Recessed
+  DIMMER=Y
+[LOAD 002]
+  NAME=Closet
+  DIMMER=N
+"""
+    result = parse_elg(text)
+    assert result.dimmable == {1: True, 2: False}
+
+
+def test_dimmer_defaults_true_when_absent():
+    """A load with no DIMMER key defaults to dimmable (prior behavior)."""
+    result = parse_elg("[LOAD 005]\n  NAME=Mystery\n")
+    assert result.dimmable == {5: True}
+
+
+def test_dimmer_lowercase_and_blank():
+    text = "[LOAD 001]\n  DIMMER=y\n[LOAD 002]\n  DIMMER=\n[LOAD 003]\n  DIMMER=N\n"
+    result = parse_elg(text)
+    assert result.dimmable == {1: True, 2: False, 3: False}
+
+
 # --- parse_csv_ids tests ---
 
 

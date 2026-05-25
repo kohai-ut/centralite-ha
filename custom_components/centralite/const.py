@@ -32,6 +32,9 @@ OPT_LOAD_NAMES: Final = "load_names"
 OPT_SWITCH_NAMES: Final = "switch_names"
 OPT_SCENE_NAMES: Final = "scene_names"
 OPT_POLL_INTERVAL: Final = "poll_interval"
+# Load indices that are on/off relays (DIMMER=N in the .elg). Exposed as
+# on/off lights rather than dimmable. Loads not listed default to dimmable.
+OPT_NONDIMMABLE_LOADS: Final = "nondimmable_loads"
 
 # Defaults
 DEFAULT_BAUD: Final = 19200
