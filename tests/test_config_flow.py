@@ -14,6 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.centralite.config_flow import SYSTEM_OPTIONS
 from custom_components.centralite.const import (
     CONF_BAUD,
+    CONF_BUTTON_IDS,
     CONF_DISABLED_LOADS,
     CONF_LOAD_IDS,
     CONF_PORT,
@@ -148,7 +149,11 @@ async def test_jts_import_jetstream(hass):
         "<Device><DeviceID>2</DeviceID><Name>Game Cans</Name>"
         "<Dimmer>true</Dimmer><SendThirdParty>true</SendThirdParty><Active>true</Active></Device>"
         "<Device><DeviceID>3</DeviceID><Name>Hall Relay</Name>"
-        "<Dimmer>false</Dimmer><SendThirdParty>true</SendThirdParty><Active>true</Active></Device>"
+        "<Dimmer>false</Dimmer><SendThirdParty>true</SendThirdParty><Active>true</Active>"
+        "<buttonList>"
+        "<Button><ID>0</ID><tap><BtnAction>1</BtnAction></tap></Button>"
+        "<Button><ID>1</ID><tap><BtnAction>5</BtnAction></tap></Button>"
+        "</buttonList></Device>"
         "</DeviceList><SceneList>"
         "<Scene><ID>1</ID><Name>All On</Name></Scene>"
         "</SceneList></GulfStreamCL>"
@@ -163,6 +168,9 @@ async def test_jts_import_jetstream(hass):
     assert result["options"][OPT_LOAD_NAMES] == {"2": "Game Cans", "3": "Hall Relay"}
     assert result["options"][OPT_NONDIMMABLE_LOADS] == [3]  # Dimmer=false
     assert CONF_DISABLED_LOADS not in result["data"]  # .jts devices are all real
+    # device 3's configured buttons (ID 0,1 -> protocol 1,2) become button switches
+    assert result["data"][CONF_BUTTON_IDS] == [[3, 1], [3, 2]]
+    assert result["options"][OPT_SWITCH_NAMES]["003.01"] == "Hall Relay Button 1"
 
 
 class _FakeScanProto:

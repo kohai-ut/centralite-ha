@@ -13,8 +13,8 @@ We extract what the integration needs:
 Only devices exposed to third-party control (<SendThirdParty>true) and active
 (<Active> not "false") are returned — others can't be observed or controlled
 over RS-232, so creating entities for them would just yield perpetually-unknown
-state. Physical keypad buttons (<buttonList>) are intentionally not parsed here;
-they belong as device triggers, not switch entities.
+state. Configured keypad buttons in each <buttonList> are parsed too (as button
+switch entities); physical presses also drive device triggers (device_trigger).
 """
 
 from __future__ import annotations
@@ -35,6 +35,10 @@ class JtsConfig:
     loads: dict[int, str] = field(default_factory=dict)
     scenes: dict[int, str] = field(default_factory=dict)
     dimmable: dict[int, bool] = field(default_factory=dict)
+    # Configured keypad buttons -> a label. Keyed (device_id, protocol_button)
+    # where protocol_button is 1-3 (the .jts numbers buttons 0-7 but only 0-2
+    # are ever configured / addressable, mapping 0->1, 1->2, 2->3).
+    buttons: dict[tuple[int, int], str] = field(default_factory=dict)
 
 
 def _is_true(value: str | None, *, default: bool = False) -> bool:
@@ -72,6 +76,7 @@ def parse_jts(text: str) -> JtsConfig:
     loads: dict[int, str] = {}
     dimmable: dict[int, bool] = {}
     scenes: dict[int, str] = {}
+    buttons: dict[tuple[int, int], str] = {}
 
     device_list = root.find("DeviceList")
     if device_list is not None:
@@ -83,8 +88,10 @@ def parse_jts(text: str) -> JtsConfig:
                 continue  # not exposed to RS-232; unusable here
             if not _is_true(dev.findtext("Active"), default=True):
                 continue
-            loads[idx] = (dev.findtext("Name") or "").strip()
+            name = (dev.findtext("Name") or "").strip()
+            loads[idx] = name
             dimmable[idx] = _is_true(dev.findtext("Dimmer"), default=True)
+            _collect_buttons(dev, idx, name, buttons)
 
     scene_list = root.find("SceneList")
     if scene_list is not None:
@@ -94,4 +101,34 @@ def parse_jts(text: str) -> JtsConfig:
                 continue
             scenes[idx] = (scene.findtext("Name") or "").strip()
 
-    return JtsConfig(loads=loads, scenes=scenes, dimmable=dimmable)
+    return JtsConfig(loads=loads, scenes=scenes, dimmable=dimmable, buttons=buttons)
+
+
+def _collect_buttons(
+    dev: ET.Element, device_idx: int, device_name: str, out: dict[tuple[int, int], str]
+) -> None:
+    """Add configured keypad buttons for a device to ``out``.
+
+    A button (``<Button>`` with a 0-based ``<ID>``) is "configured" if any of
+    its tap/press-and-hold/double-tap actions has a non-zero ``<BtnAction>``.
+    Only IDs 0-2 are kept — the protocol addresses buttons 1-3 — mapped ID+1.
+    """
+    button_list = dev.find("buttonList")
+    if button_list is None:
+        return
+    for button in button_list.findall("Button"):
+        raw_id = (button.findtext("ID") or "").strip()
+        if not raw_id.isdigit():
+            continue
+        bid = int(raw_id)
+        if bid > 2:  # not addressable over the third-party protocol
+            continue
+        configured = any(
+            (action := button.find(name)) is not None
+            and (action.findtext("BtnAction") or "0") != "0"
+            for name in ("tap", "pressandhold", "doubletap")
+        )
+        if configured:
+            protocol_button = bid + 1
+            label = f"{device_name} Button {protocol_button}" if device_name else ""
+            out[(device_idx, protocol_button)] = label
