@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -178,9 +179,13 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 disabled: set[int] = set()
 
                 import_text = user_input.get("elg_text", "").strip()
-                if import_text and import_text.lstrip().startswith("<"):
-                    # XML => JetStream .jts. Every device in a .jts is real
-                    # (no phantom slots), so all are created and enabled.
+                is_jetstream = self._data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM
+                if import_text and is_jetstream:
+                    # JetStream uses the .jts (XML) parser. Route by the selected
+                    # system type, not by sniffing the content, so a BOM-prefixed
+                    # file or wrong-format paste fails cleanly instead of being
+                    # parsed by the wrong parser. Every .jts device is real (no
+                    # phantom slots), so all are created and enabled.
                     jts = parse_jts(import_text)
                     if not jts.loads and not jts.scenes:
                         raise ValueError("unrecognized import text")
@@ -195,6 +200,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         if name:
                             scene_names[str(idx)] = name
                 elif import_text:
+                    # Elegance (and reserved eLite) use the .elg INI parser.
                     cfg = parse_elg(import_text)
                     if not cfg.loads and not cfg.scenes:
                         # Non-empty paste that yielded nothing: not a recognized
@@ -304,9 +310,11 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data[CONF_PORT], baudrate=self._data[CONF_BAUD]
         )
         try:
-            await protocol.connect()
-        except Exception as exc:  # serial/connection failure
-            raise _ScanError(str(exc)) from exc
+            # Bound the open so a present-but-unresponsive adapter can't hang
+            # the config flow forever.
+            await asyncio.wait_for(protocol.connect(), timeout=10)
+        except Exception as exc:  # serial failure or timeout opening the bridge
+            raise _ScanError(str(exc) or "timed out opening the bridge") from exc
         try:
             return await protocol.scan_device_names()
         finally:

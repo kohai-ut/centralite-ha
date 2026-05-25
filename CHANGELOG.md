@@ -15,6 +15,11 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Fixed
 
+- **Config import routes by selected system type**, not by sniffing the pasted text. Fixes a BOM-prefixed `.jts` being misrouted to the Elegance parser and the wrong parser running when the paste didn't match the chosen system.
+- **JetStream `^N` discovery scan hardened**: aborts with a clear error if the link drops mid-scan (was silently returning a partial device list), bounds the `connect()` open with a 10s timeout, and scans the documented 001-096 device range (≈30s) instead of 001-199.
+- **Elegance keypad import tolerates stray sections**: a keypad button number outside 1-24 is skipped instead of producing an out-of-range switch index that aborted the entire import.
+- **`.jts` parser rejects implausibly large input** before handing it to the XML parser (guards against an accidental huge paste / entity expansion).
+
 - **JetStream CRLF line framing.** JetStream terminates every line with `CR`+`LF`, but the reader split on `CR` only, leaving the `LF` to become the first byte of the next line — which then failed length/prefix dispatch, so every spontaneous `DEV`/`ACT`/`SCN` event after the first was mis-parsed on real hardware. The reader now skips `LF`. (Elegance uses `CR` only and is unaffected.)
 - **JetStream `^N` device-name parsing.** The reply format (confirmed on hardware) is `NAM` + the 3-digit device number + the name, e.g. `NAM002GAME RM E-1-E GAME CANS`. The parser stripped only `NAM`, so it returned the device number glued to the name (`002GAME RM…`). It now strips the index too and matches the specific device so an unrelated `NAM` can't fulfill the request.
 

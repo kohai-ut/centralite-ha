@@ -22,6 +22,11 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
+# A real .jts export is a few hundred KB. Reject anything wildly larger before
+# handing it to ElementTree — a cheap guard against an accidental huge paste or
+# a maliciously entity-expanding document.
+_MAX_JTS_BYTES = 8 * 1024 * 1024
+
 
 @dataclass(frozen=True, slots=True)
 class JtsConfig:
@@ -57,6 +62,8 @@ def parse_jts(text: str) -> JtsConfig:
     parsing so an embedded ``encoding=`` declaration doesn't trip ElementTree's
     "Unicode strings with encoding declaration are not supported" check.
     """
+    if len(text) > _MAX_JTS_BYTES:
+        raise ValueError("Pasted .jts is implausibly large; refusing to parse")
     try:
         root = ET.fromstring(text.encode("utf-8"))
     except ET.ParseError as exc:

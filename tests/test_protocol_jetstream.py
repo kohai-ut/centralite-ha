@@ -297,6 +297,25 @@ async def test_scan_skips_empty_names():
         await p.disconnect()
 
 
+async def test_scan_aborts_on_disconnect():
+    """A mid-scan connection loss aborts with ProtocolError, not a partial result."""
+    p, _r, _w = await _make_protocol()
+    try:
+        calls = {"n": 0}
+
+        async def fake_get_name(idx, *, timeout=0.0):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                p._lost = True  # simulate the reader loop dying mid-scan
+            return None
+
+        p.get_device_name = fake_get_name  # type: ignore[method-assign]
+        await _expect_raises_async(ProtocolError, p.scan_device_names(start=1, end=10))
+        assert calls["n"] == 2  # stopped immediately after the disconnect
+    finally:
+        await p.disconnect()
+
+
 async def test_crlf_framed_events_both_parse():
     """JetStream ends lines with CRLF; a stray LF must not corrupt the next line.
 

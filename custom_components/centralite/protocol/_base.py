@@ -92,8 +92,13 @@ class _BaseSerialProtocol(CentraliteProtocol):
         self._switch_event_cb: SwitchEventCallback | None = None
         self._scene_event_cb: SceneEventCallback | None = None
         self._disconnect_cb: DisconnectCallback | None = None
+        # Set when the reader loop ends unexpectedly. Long-running loops (e.g. a
+        # device-name scan) check this to abort instead of treating every probe
+        # as an unconfigured-and-silent slot once the link is gone.
+        self._lost = False
 
     async def connect(self) -> None:
+        self._lost = False
         self._reader, self._writer = await self._transport_factory(self._url, self._baudrate)
         self._reader_task = asyncio.create_task(
             self._reader_loop(), name=f"centralite-reader-{type(self).__name__}"
@@ -194,6 +199,7 @@ class _BaseSerialProtocol(CentraliteProtocol):
         the disconnect callback so the coordinator can mark entities
         unavailable.
         """
+        self._lost = True
         if self._pending is not None:
             future, _ = self._pending
             if not future.done():
