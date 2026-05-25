@@ -6,8 +6,9 @@ Pressing it writes HA's current local time to the bridge via set_clock.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from homeassistant.const import EntityCategory
 from homeassistant.helpers import entity_registry as er
@@ -68,23 +69,33 @@ async def test_clock_button_absent_for_jetstream(hass):
 
 
 async def test_press_sets_clock_to_local_now(hass):
+    # Use a non-UTC zone so we can prove the button sends LOCAL wall-clock
+    # time, not UTC — a regression to dt_util.utcnow() must fail this test.
+    await hass.config.async_set_time_zone("America/Chicago")
+    fixed_local = datetime(2026, 5, 24, 13, 30, 0, tzinfo=ZoneInfo("America/Chicago"))
+
     entry = _entry(hass, SYSTEM_ELEGANCE)
     proto = FakeProtocol(supports_clock=True, bulk_loads={1: True})
     with patch(_ELEGANCE_PROTO, return_value=proto):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-        await hass.services.async_call(
-            "button",
-            "press",
-            {"entity_id": "button.bridge_sync_clock"},
-            blocking=True,
-        )
+        with patch(
+            "custom_components.centralite.button.dt_util.now",
+            return_value=fixed_local,
+        ):
+            await hass.services.async_call(
+                "button",
+                "press",
+                {"entity_id": "button.bridge_sync_clock"},
+                blocking=True,
+            )
 
     clock_calls = [c for c in proto.calls if c[0] == "set_clock"]
     assert len(clock_calls) == 1
     sent = clock_calls[0][1]
     assert isinstance(sent, datetime)
-    # dt_util.now() is tz-aware in HA's configured zone (so encode_bcd_clock
-    # reads local-time fields, not UTC).
-    assert sent.tzinfo is not None
+    # Local, not UTC: Chicago is offset from UTC, and the wall-clock fields
+    # (what encode_bcd_clock transmits) are the local ones.
+    assert sent.utcoffset() != timedelta(0)
+    assert (sent.hour, sent.minute) == (13, 30)
