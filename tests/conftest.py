@@ -36,11 +36,13 @@ class FakeProtocol(CentraliteProtocol):
         *,
         supports_bulk: bool = True,
         supports_scene_push: bool = False,
+        supports_clock: bool = False,
         bulk_loads: dict[int, bool] | None = None,
         connect_error: Exception | None = None,
     ) -> None:
         self._bulk = supports_bulk
         self._scene_push = supports_scene_push
+        self._clock = supports_clock
         self._bulk_loads = bulk_loads or {}
         # Mutable so tests can toggle it between reconnect attempts.
         self.connect_error = connect_error
@@ -93,6 +95,11 @@ class FakeProtocol(CentraliteProtocol):
     async def tap_switch(self, idx: int, *, button: int = 1) -> None:
         self.calls.append(("tap_switch", idx, button))
 
+    async def set_clock(self, dt) -> None:
+        if not self._clock:
+            raise NotImplementedError
+        self.calls.append(("set_clock", dt))
+
     async def get_all_switch_states(self) -> dict[int, bool]:
         if not self._bulk:
             raise ProtocolError("push-only: no bulk query")
@@ -117,6 +124,10 @@ class FakeProtocol(CentraliteProtocol):
     @property
     def supports_bulk_query(self) -> bool:
         return self._bulk
+
+    @property
+    def supports_clock(self) -> bool:
+        return self._clock
 
     @property
     def max_loads(self) -> int:
