@@ -16,6 +16,9 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Fixed
 
+- **Device triggers now enumerate for every device's buttons.** They previously listed only from the configured button list, which a `.jts` import never populates — so JetStream users got zero triggers and buttons 2/3 were unreachable. Now each known device offers buttons 1-3 (the protocol's range), so any physical press is trigger-able.
+- **Mid-scan disconnect during the `^N` scan surfaces as `scan_failed`** instead of escaping the config flow as an unhandled error; the scan's open-failure path also cleans up a partial connection.
+- **Bridge device id is looked up fresh per button event** rather than cached, so a deleted-and-recreated device can't leave triggers pointing at a dead id.
 - **Config import routes by selected system type**, not by sniffing the pasted text. Fixes a BOM-prefixed `.jts` being misrouted to the Elegance parser and the wrong parser running when the paste didn't match the chosen system.
 - **JetStream `^N` discovery scan hardened**: aborts with a clear error if the link drops mid-scan (was silently returning a partial device list), bounds the `connect()` open with a 10s timeout, and scans the documented 001-096 device range (≈30s) instead of 001-199.
 - **Elegance keypad import tolerates stray sections**: a keypad button number outside 1-24 is skipped instead of producing an out-of-range switch index that aborted the entire import.

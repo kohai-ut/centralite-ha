@@ -28,7 +28,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
-    CONF_BUTTON_IDS,
+    CONF_LOAD_IDS,
     CONF_SUBTYPE,
     CONF_SWITCH_IDS,
     CONF_SYSTEM_TYPE,
@@ -37,6 +37,7 @@ from .const import (
     SYSTEM_JETSTREAM,
     button_subtype,
 )
+from .protocol.jetstream import JETSTREAM_MAX_BUTTONS_PER_SWITCH
 
 if TYPE_CHECKING:
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
@@ -77,9 +78,15 @@ async def async_get_triggers(
 
     triggers: list[dict[str, str]] = []
     if entry.data.get(CONF_SYSTEM_TYPE) == SYSTEM_JETSTREAM:
-        for pair in entry.data.get(CONF_BUTTON_IDS, []):
-            subtype = button_subtype(pair[0], pair[1])
-            triggers += [_trigger(device_id, t, subtype) for t in TRIGGER_TYPES]
+        # Every JetStream device can host up to 3 keypad buttons (the protocol
+        # numbers them 1-3, exactly what an ACT event reports). Offer all three
+        # per known device so a press of any physical button is trigger-able,
+        # rather than relying on a configured button list (a .jts import doesn't
+        # populate one).
+        for device_idx in entry.data.get(CONF_LOAD_IDS, []):
+            for button in range(1, JETSTREAM_MAX_BUTTONS_PER_SWITCH + 1):
+                subtype = button_subtype(device_idx, button)
+                triggers += [_trigger(device_id, t, subtype) for t in TRIGGER_TYPES]
     else:
         # Elegance switches have no separate button index (button 0) and never
         # report a "tap".
