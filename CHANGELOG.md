@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- **JetStream `.jts` config import.** Paste a JetStream Designer `.jts` (XML) export in the config flow to bulk-import devices (as lights, with names and dimmer/on-off type) and scenes — the JetStream equivalent of `.elg` import. Only devices set to report third-party output are imported (others can't be observed over RS-232); physical keypad buttons are not imported as entities yet. Format is auto-detected from the pasted text.
 - **Phantom-load filtering on `.elg` import.** A `.elg` lists all 192 load slots, most of which are unused defaults. Only loads that are named, or referenced by a scene or an active keypad button, are created; the rest are skipped. Referenced-but-unnamed loads are created disabled-by-default so they can be enabled in the UI without re-importing. Hand-entered load IDs are always created enabled. (One real config dropped from 192 entities to 73.)
 - **Load-type-aware light entities.** The `.elg` parser now reads each load's `DIMMER=Y/N` flag; loads flagged non-dimmable are exposed as on/off lights (`ColorMode.ONOFF`) instead of dimmers with a non-functional brightness slider. (In a typical install most loads are on/off relays.) Manual-ID setups, with no `.elg`, still default to dimmable.
 - **"Which integration should I use?" README section** comparing this integration with the built-in Home Assistant LiteJet integration, so LiteJet owners are pointed to the built-in one and Elegance/JetStream owners know to use this.

@@ -16,9 +16,9 @@
       },
       "import": {
         "title": "Import names and device IDs",
-        "description": "Paste your Elegance .elg export into the first field to bulk-import friendly names, scene names, and the list of devices to expose. Or enter comma-separated IDs in the other fields if you don't have an export file. (JetStream .jts import is not supported yet — for JetStream, enter IDs manually; friendly names come from the bridge's on-device name query.)",
+        "description": "Paste your config export into the first field to bulk-import friendly names, scene names, and the list of devices to expose — Elegance .elg or JetStream .jts. Or enter comma-separated IDs in the other fields if you don't have an export file.",
         "data": {
-          "elg_text": "Paste .elg file contents (Elegance only)",
+          "elg_text": "Paste .elg (Elegance) or .jts (JetStream) file contents",
           "load_ids_csv": "Additional load IDs (comma-separated)",
           "scene_ids_csv": "Additional scene IDs (comma-separated)",
           "switch_ids_csv": "Switch / button device IDs (comma-separated)"
@@ -29,7 +29,7 @@
       "already_configured": "This bridge is already configured."
     },
     "error": {
-      "import_failed": "Could not parse the provided text as an Elegance .elg file. JetStream .jts files are not supported yet — enter IDs manually in the comma-separated fields instead.",
+      "import_failed": "Could not parse the provided text as an Elegance .elg or JetStream .jts file. Check the file contents, or enter IDs manually in the comma-separated fields instead.",
       "ids_out_of_range": "One or more IDs are outside the valid range for the selected system. Check your load, scene, and switch IDs."
     }
   },
