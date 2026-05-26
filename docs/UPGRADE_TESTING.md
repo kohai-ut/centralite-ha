@@ -53,10 +53,17 @@ without losing those entities:
 
 1. In **HACS**, add this v2 repo as a custom repository and install it. Don't
    restart yet.
-2. In **HACS**, uninstall the v1 `centralite_elegance` / `centralite_jetstream`
-   downloads (removes their `custom_components/` code). **Leave their config
-   entries in Devices & Services untouched.** Restart Home Assistant. The v1
-   entries now show "integration not found" and their entities orphan.
+2. **Remove the v1 integration code.** How depends on how v1 was installed:
+   - **Manual install** (the v1 integrations were copied into
+     `custom_components/` by hand) — delete the `custom_components/centralite_elegance`
+     and `custom_components/centralite_jetstream` folders via the Samba share,
+     SSH/Terminal, or the File Editor add-on.
+   - **HACS install** — uninstall the `centralite_elegance` /
+     `centralite_jetstream` downloads in HACS.
+
+   Either way, **leave the v1 config entries in Devices & Services untouched.**
+   Restart Home Assistant. The v1 entries now show "integration not found" and
+   their entities orphan in the registry — which is what migration consumes.
 3. **Settings → Devices & Services → Add Integration → Centralite.** Choose the
    system type and the serial port; optionally paste your `.elg`/`.jts` for
    friendly names. On load, v2 renames the orphaned `elegance.*` /
