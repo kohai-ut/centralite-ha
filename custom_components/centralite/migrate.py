@@ -33,8 +33,17 @@ can't carry across the domain change is a scene's area/icon customization.
 
 Customizations on the renamed load/switch/button entities (area, icon,
 alias, friendly_name override, dashboard placement) ARE preserved because
-those stay in the same domain and we use entity_registry.async_update_entity
-rather than removing and recreating.
+those stay in the same domain and we update the existing registry row rather
+than removing and recreating.
+
+A wrinkle for JetStream: the v1 JetStream integration ran under its own
+platform ("centralite-jetstream"), but v2 is "centralite". The registry keys
+on (domain, platform, unique_id), so a unique_id rename alone is not enough —
+the v2 entity would never adopt the row and would create a duplicate, leaving
+the v1 one orphaned. For any entity whose platform isn't already DOMAIN we use
+async_update_entity_platform to move the platform (and set the new unique_id /
+config entry) in one shot. v1 Elegance already used the "centralite" platform,
+so it takes the plain async_update_entity path.
 
 A Repairs issue is surfaced with the migration log so the user can find
 any automations that referenced the old entity_ids (HA cannot auto-
@@ -168,11 +177,42 @@ async def async_migrate_entries(hass: HomeAssistant, entry: ConfigEntry) -> None
         # action == "migrate"
         assert result.new_suffix is not None
         new_uid = f"{entry.entry_id}_{result.new_suffix}"
-        registry.async_update_entity(
-            ent.entity_id,
-            new_unique_id=new_uid,
-            config_entry_id=entry.entry_id,
-        )
+        if ent.platform != DOMAIN:
+            # The v1 JetStream integration ran under its own platform
+            # ("centralite-jetstream"), so its entities are registered under
+            # that platform, not "centralite". The entity registry keys on
+            # (domain, platform, unique_id), so the v2 entity can NEVER adopt
+            # the row by unique_id alone — it would create a fresh entity and
+            # leave the v1 one orphaned (confirmed on a real upgrade). Move the
+            # platform too. (Elegance v1 already used the "centralite" platform,
+            # so it takes the cheaper async_update_entity path below.)
+            # async_update_entity_platform is HA's tool for exactly this; it
+            # requires the entity not be loaded — true here, since v1's
+            # integration is gone and v2 hasn't set up its platforms yet.
+            try:
+                registry.async_update_entity_platform(
+                    ent.entity_id,
+                    DOMAIN,
+                    new_config_entry_id=entry.entry_id,
+                    new_unique_id=new_uid,
+                )
+            except ValueError:
+                # Entity unexpectedly still loaded — skip it (stays an orphan,
+                # retried on a later reload) rather than aborting the whole run.
+                _LOGGER.warning(
+                    "Could not move %s to the %s platform; leaving it for a "
+                    "later run",
+                    ent.entity_id,
+                    DOMAIN,
+                    exc_info=True,
+                )
+                continue
+        else:
+            registry.async_update_entity(
+                ent.entity_id,
+                new_unique_id=new_uid,
+                config_entry_id=entry.entry_id,
+            )
         migrated.append((ent.entity_id, ent.unique_id, new_uid))
 
     if not migrated and not deleted:
