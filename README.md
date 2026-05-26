@@ -2,12 +2,12 @@
 
 A modern Home Assistant custom integration for **Centralite Elegance** and **Centralite JetStream** lighting systems. Communicates with the bridge over RS-232.
 
-> [!WARNING]
-> **Status: v2.0.0 alpha.** This is the first release of a greenfield rewrite of the legacy
-> v1 integrations ([centralite_elegance](https://github.com/kohai-ut/centralite_elegance),
+> [!NOTE]
+> **Status: v2.0.0 (stable).** A greenfield rewrite of the legacy v1 integrations
+> ([centralite_elegance](https://github.com/kohai-ut/centralite_elegance),
 > [centralite_jetstream](https://github.com/kohai-ut/centralite_jetstream), both archived at
-> `v1.0.1`). Expect rough edges. Production users on v1.0.1 should keep running v1 until
-> v2 has soaked on a test HA instance.
+> `v1.0.1`), validated end-to-end against real Elegance and JetStream hardware. Considerably
+> more capable than v1; see [Known limitations](#known-limitations) for what isn't covered yet.
 
 ## What this is
 
@@ -24,7 +24,7 @@ A 19200-baud USB-to-serial adapter on the HA host (Raspberry Pi, NUC, VM) plugs 
 
 ## Which integration should I use? (vs. the built-in LiteJet integration)
 
-Home Assistant ships a built-in [**LiteJet**](https://www.home-assistant.io/integrations/litejet/) integration (via [`pylitejet`](https://github.com/joncar/pylitejet)). LiteJet is a sibling CentraLite product, and because these systems share a family of RS-232 protocols, the built-in integration also advertises Elegance and JetStream support. Here's how to choose:
+Home Assistant ships a built-in [**LiteJet**](https://www.home-assistant.io/integrations/litejet/) integration (via [`pylitejet`](https://github.com/joncar/pylitejet)). LiteJet is a sibling CentraLite product, and because these systems share a family of RS-232 protocols, the built-in integration also advertises Elegance and JetStream support but it is not full support. Here's how to choose:
 
 | Your system | Use |
 |---|---|
@@ -60,6 +60,10 @@ Until v2 ships to the HACS default repository:
 4. Restart Home Assistant.
 5. Go to **Settings → Devices & Services → Add Integration** and search for **Centralite**.
 
+### Staying up to date
+
+HACS manages updates: when a new version is published, it shows an **Update** badge on the Centralite entry — open it, click **Update**, and **restart Home Assistant**. Your configuration and entities are preserved across updates.
+
 ## Configuration
 
 The config flow has two steps:
@@ -77,7 +81,7 @@ You have two options for telling HA which loads/scenes/switches you have and wha
 - **Paste your `.elg` (Elegance) or `.jts` (JetStream) config file** — the integration parses your friendly names and the list of configured loads and scenes automatically. Export `.elg` from the Centralite Elegance Programming Software; export `.jts` from JetStream Designer. (For JetStream, only devices set to report third-party output are imported, since the others can't be observed over RS-232. Physical keypad buttons aren't imported as entities yet.)
 - **Or enter comma-separated IDs** for loads, scenes, switches if you don't have an export file. Friendly names can be set per-entity in HA's UI afterwards.
 
-Both paths can be combined.
+Both paths can be combined. (Using the config file approach is the most tested.)
 
 After setup, you can edit any entity's display name via HA's standard entity-rename UI on its device card.
 
@@ -98,9 +102,6 @@ Upgrading from the v1 integrations (`centralite_elegance` / `centralite_jetstrea
 2. **Deletes the old `scene.*` entities (both `*ON` and `*OFF`).** In v2 a scene is a **`switch.` entity** (one stateful scene-switch, no ON/OFF pair) — a different domain from v1's `scene.*`, so the old entity can't be carried over; v2 recreates it fresh.
 3. Surfaces a **Repairs issue** with the full migration log.
 
-> [!IMPORTANT]
-> Use **v2.0.0a3 or later**. Earlier alphas have migration bugs (orphaned JetStream entities, mis-mapped Elegance switch indices), and `a2` can't load on current Home Assistant cores at all.
-
 ### Upgrade steps
 
 Do this in one maintenance window. The bridge's serial port can only be held by one integration at a time, so v1 and v2 can't both run against it.
@@ -115,7 +116,6 @@ Do this in one maintenance window. The bridge's serial port can only be held by 
      rm -rf custom_components/centralite custom_components/centralite-jetstream
      ```
      (Adjust the names to match your install — a v1 from the archived repos is `centralite_elegance` / `centralite_jetstream`.)
-   - **HACS install:** uninstall the v1 `centralite_elegance` / `centralite_jetstream` downloads in HACS.
 
    > **Do NOT delete the v1 _config entry_** in Devices & Services — that purges its entities and leaves nothing to migrate. Remove only the *code*. (A YAML-configured v1 has no config entry anyway.)
    >
@@ -128,7 +128,7 @@ Do this in one maintenance window. The bridge's serial port can only be held by 
 
 3. **Restart Home Assistant.** Your v1 entities are now orphaned in the registry (any v1 config entry shows "integration not found").
 
-4. **Install v2 via HACS** as a custom repository (see [Installation](#installation-hacs-custom-repository) above) — select **v2.0.0a3 or later** — then **restart**.
+4. **Install v2 via HACS** as a custom repository (see [Installation](#installation-hacs-custom-repository) above), then **restart**.
 
 5. **Settings → Devices & Services → Add Integration → Centralite.** Pick the system type and serial port, and optionally paste your `.elg`/`.jts` for friendly names. On load, v2 renames the orphaned unique_ids to its scheme and adopts them. **Add it once per bridge** if you run both an Elegance and a JetStream.
 
@@ -137,6 +137,7 @@ Do this in one maintenance window. The bridge's serial port can only be held by 
 - **Scenes** moved to the `switch.` domain with new `entity_id`s. Update any automation/script/dashboard that called `scene.turn_on(scene.<name>)` to use `switch.turn_on` / `switch.turn_off` on the new entity. A scene's area/icon customization doesn't carry across the domain change. The Repairs log lists every scene by its old name.
 - **Automation YAML** referencing renamed IDs isn't rewritten automatically — use the Repairs issue as your cross-reference.
 - The old v1 `scene.*` entities, and any now-empty v1 config entries, can be deleted.
+- Tip: You can see any 'unavailable' orphaned devices using Developer Tools in HA.
 
 ### Rollback
 
