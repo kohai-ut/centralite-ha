@@ -10,7 +10,12 @@ from __future__ import annotations
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.centralite.const import CONF_SYSTEM_TYPE, DOMAIN, SYSTEM_ELEGANCE
+from custom_components.centralite.const import (
+    CONF_SYSTEM_TYPE,
+    DOMAIN,
+    SYSTEM_ELEGANCE,
+    SYSTEM_JETSTREAM,
+)
 from custom_components.centralite.migrate import async_migrate_entries
 
 
@@ -29,23 +34,77 @@ def _orphan(registry, platform, unique_id, domain="light"):
 
 
 async def test_renames_and_reassigns_elegance_load(hass):
+    # v1 Elegance ran under the "centralite" platform (same as v2), so the
+    # entity is adopted in place via async_update_entity — platform unchanged.
     registry = er.async_get(hass)
-    ent = _orphan(registry, "elegance", "elegance.L001")
+    ent = _orphan(registry, "centralite", "elegance.L001")
     entry = _entry(hass)
     await async_migrate_entries(hass, entry)
     migrated = registry.async_get(ent.entity_id)
     assert migrated.unique_id == f"{entry.entry_id}_load_001"
     assert migrated.config_entry_id == entry.entry_id
+    assert migrated.platform == "centralite"
 
 
-async def test_scene_off_is_deleted(hass):
+async def test_jetstream_migration_moves_platform(hass):
+    """v1 JetStream entities live under the 'centralite-jetstream' platform, so
+    the v2 'centralite' entity can't adopt them by unique_id alone (the registry
+    keys on domain+platform+unique_id). The migration must move the platform
+    too, or every JetStream entity orphans — confirmed on a real upgrade.
+    Covers both a load (light) and a keypad button (switch)."""
     registry = er.async_get(hass)
-    on = _orphan(registry, "elegance", "elegance.scene4ON", domain="switch")
-    off = _orphan(registry, "elegance", "elegance.scene4OFF", domain="switch")
+    load = registry.async_get_or_create("light", "centralite-jetstream", "jetstream.JSL001")
+    button = registry.async_get_or_create(
+        "switch", "centralite-jetstream", "jetstream.JSSW01401"
+    )
+    entry = _entry(hass, system=SYSTEM_JETSTREAM)
+    await async_migrate_entries(hass, entry)
+
+    m_load = registry.async_get(load.entity_id)
+    assert m_load.platform == "centralite"
+    assert m_load.unique_id == f"{entry.entry_id}_load_001"
+    assert m_load.config_entry_id == entry.entry_id
+
+    m_btn = registry.async_get(button.entity_id)
+    assert m_btn.platform == "centralite"
+    assert m_btn.unique_id == f"{entry.entry_id}_button_014_01"
+    assert m_btn.config_entry_id == entry.entry_id
+
+
+async def test_jetstream_migration_clears_unavailable_placeholder(hass):
+    """The realistic running-HA path: once HA has started it writes an
+    'unavailable' restored placeholder into the state machine for the orphan,
+    which trips async_update_entity_platform's not-loaded guard. The migration
+    must drop that placeholder first, or the entity re-orphans with a v2
+    duplicate (a cold-boot-only test misses this — adding v2 via the UI without
+    a reboot is the common upgrade path)."""
+    registry = er.async_get(hass)
+    ent = registry.async_get_or_create("light", "centralite-jetstream", "jetstream.JSL001")
+    # What HA's _write_unavailable_states does for an orphan after START:
+    hass.states.async_set(ent.entity_id, "unavailable", {"restored": True})
+    entry = _entry(hass, system=SYSTEM_JETSTREAM)
+    await async_migrate_entries(hass, entry)
+    migrated = registry.async_get(ent.entity_id)
+    assert migrated.platform == "centralite"  # moved despite the placeholder
+    assert migrated.unique_id == f"{entry.entry_id}_load_001"
+    assert migrated.config_entry_id == entry.entry_id
+
+
+async def test_scenes_are_deleted_not_renamed(hass):
+    """v1 scenes are `scene.*` entities; v2 scenes are `switch.*`. Renaming the
+    scene-domain row's unique_id can't let the v2 switch adopt it (registry keys
+    on domain+platform+unique_id), so it would orphan an unavailable `scene.*`.
+    Both ON and OFF must be DELETED. Uses domain="scene" to match real v1 —
+    the earlier test used "switch" and so never exercised the domain mismatch."""
+    registry = er.async_get(hass)
+    on = _orphan(registry, "elegance", "elegance.scene4ON", domain="scene")
+    off = _orphan(registry, "elegance", "elegance.scene4OFF", domain="scene")
+    plain = _orphan(registry, "elegance", "elegance.scene7", domain="scene")
     entry = _entry(hass)
     await async_migrate_entries(hass, entry)
-    assert registry.async_get(on.entity_id).unique_id == f"{entry.entry_id}_scene_004"
-    assert registry.async_get(off.entity_id) is None  # absorbed/removed
+    assert registry.async_get(on.entity_id) is None
+    assert registry.async_get(off.entity_id) is None
+    assert registry.async_get(plain.entity_id) is None
 
 
 async def test_does_not_adopt_other_systems_orphans(hass):

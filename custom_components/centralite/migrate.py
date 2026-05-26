@@ -5,27 +5,45 @@ or kohai-ut/centralite_jetstream, both archived at v1.0.1) to this v2
 integration, their existing entities live in HA's entity_registry with
 unique_ids in the legacy format:
 
-    elegance.L001         (light)
-    elegance.SW044        (switch)
-    elegance.scene4ON     (scene -- becomes a switch in v2)
-    elegance.scene4OFF    (the paired OFF entity -- removed in v2)
-    jetstream.JSL001      (light)
-    jetstream.JSSW04401   (button device 044, button 01)
-    jetstream.scene4ON / OFF
+    elegance.L001         (light  -> renamed/adopted)
+    elegance.SW044        (switch -> renamed/adopted)
+    elegance.scene4ON     (scene  -> DELETED; v2 scene is a switch, see below)
+    elegance.scene4OFF    (scene  -> DELETED)
+    jetstream.JSL001      (light  -> renamed/adopted)
+    jetstream.JSSW04401   (button device 044, button 01 -> renamed/adopted)
+    jetstream.scene4ON / OFF (-> DELETED)
 
 Lowercase variants (elegance.l001, JETSTREAM.JSL001) are handled too;
 the rules are case-insensitive.
 
 This module scans the registry for those patterns, scoped to the entry's
 own system (an Elegance entry only adopts elegance.* orphans, a JetStream
-entry only jetstream.*), renames them to the v2 unique_id scheme
-({entry_id}_load_001, etc.), and removes the now-redundant scene*OFF entries. The function is idempotent — subsequent
-runs find nothing because migrated entries are no longer orphans and
-already use the new format.
+entry only jetstream.*), renames the load/switch/button entities to the v2
+unique_id scheme ({entry_id}_load_001, etc.), and DELETES the old scene
+entities. The function is idempotent — subsequent runs find nothing because
+migrated entries are no longer orphans and already use the new format.
 
-Customizations (area, icon, alias, friendly_name override, dashboard
-placement) are preserved because we use entity_registry.async_update_entity
-rather than removing and recreating.
+Scenes are deleted rather than renamed because a v1 scene is a `scene.*`
+entity but a v2 scene is a `switch.*` entity (a stateful scene-switch, no
+more -ON/-OFF pair). The entity registry keys on (domain, platform,
+unique_id), so renaming a scene-domain row's unique_id can never let the
+v2 switch entity adopt it — it would just leave an orphaned, unavailable
+`scene.*` behind. v2 creates the scene-switch fresh; the only thing that
+can't carry across the domain change is a scene's area/icon customization.
+
+Customizations on the renamed load/switch/button entities (area, icon,
+alias, friendly_name override, dashboard placement) ARE preserved because
+those stay in the same domain and we update the existing registry row rather
+than removing and recreating.
+
+A wrinkle for JetStream: the v1 JetStream integration ran under its own
+platform ("centralite-jetstream"), but v2 is "centralite". The registry keys
+on (domain, platform, unique_id), so a unique_id rename alone is not enough —
+the v2 entity would never adopt the row and would create a duplicate, leaving
+the v1 one orphaned. For any entity whose platform isn't already DOMAIN we use
+async_update_entity_platform to move the platform (and set the new unique_id /
+config entry) in one shot. v1 Elegance already used the "centralite" platform,
+so it takes the plain async_update_entity path.
 
 A Repairs issue is surfaced with the migration log so the user can find
 any automations that referenced the old entity_ids (HA cannot auto-
@@ -70,18 +88,15 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str] | None]] = [
         re.compile(r"^elegance\.SW(\d+)$", re.IGNORECASE),
         lambda m: f"switch_{int(m.group(1)):03d}",
     ),
-    # Elegance scene OFF: delete (absorbed into scene-switch)
+    # Elegance scenes: delete all of them. v1 scenes are `scene.*` entities,
+    # but a v2 scene is a *switch* entity — a different domain — so the old row
+    # cannot be adopted by renaming its unique_id; doing so just leaves an
+    # orphaned, unavailable `scene.*` entity behind. The v2 scene-switch is
+    # created fresh instead. (Scene area/icon customizations therefore do not
+    # carry across the domain change — an inherent limitation, not a choice.)
     (re.compile(r"^elegance\.scene(\d+)OFF$", re.IGNORECASE), None),
-    # Elegance scene ON: rename to scene_NNN
-    (
-        re.compile(r"^elegance\.scene(\d+)ON$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
-    # Elegance scene (no ON/OFF suffix): rename
-    (
-        re.compile(r"^elegance\.scene(\d+)$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
+    (re.compile(r"^elegance\.scene(\d+)ON$", re.IGNORECASE), None),
+    (re.compile(r"^elegance\.scene(\d+)$", re.IGNORECASE), None),
     # JetStream load: jetstream.JSL001 -> load_001
     (
         re.compile(r"^jetstream\.JSL(\d+)$", re.IGNORECASE),
@@ -97,17 +112,11 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str] | None]] = [
         re.compile(r"^jetstream\.SW(\d+)$", re.IGNORECASE),
         lambda m: f"switch_{int(m.group(1)):03d}",
     ),
-    # JetStream scene OFF: delete
+    # JetStream scenes: delete all (same reason as Elegance — v2 scene is a
+    # switch entity, so the old scene.* row can't be adopted by rename).
     (re.compile(r"^jetstream\.scene(\d+)OFF$", re.IGNORECASE), None),
-    # JetStream scene ON: rename
-    (
-        re.compile(r"^jetstream\.scene(\d+)ON$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
-    (
-        re.compile(r"^jetstream\.scene(\d+)$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
+    (re.compile(r"^jetstream\.scene(\d+)ON$", re.IGNORECASE), None),
+    (re.compile(r"^jetstream\.scene(\d+)$", re.IGNORECASE), None),
 ]
 
 
@@ -168,11 +177,49 @@ async def async_migrate_entries(hass: HomeAssistant, entry: ConfigEntry) -> None
         # action == "migrate"
         assert result.new_suffix is not None
         new_uid = f"{entry.entry_id}_{result.new_suffix}"
-        registry.async_update_entity(
-            ent.entity_id,
-            new_unique_id=new_uid,
-            config_entry_id=entry.entry_id,
-        )
+        if ent.platform != DOMAIN:
+            # The v1 JetStream integration ran under its own platform
+            # ("centralite-jetstream"), so its entities are registered under
+            # that platform, not "centralite". The entity registry keys on
+            # (domain, platform, unique_id), so the v2 entity can NEVER adopt
+            # the row by unique_id alone — it would create a fresh entity and
+            # leave the v1 one orphaned (confirmed on a real upgrade). Move the
+            # platform too. (Elegance v1 already used the "centralite" platform,
+            # so it takes the cheaper async_update_entity path below.)
+            # async_update_entity_platform is HA's tool for exactly this, but it
+            # refuses to migrate an entity that has a (non-unknown) state. Once
+            # HA has started, it writes an "unavailable" RESTORED placeholder
+            # into the state machine for every orphaned registry row — so on a
+            # running-HA upgrade (add v2 via the UI without a reboot) that guard
+            # would trip and the entity would re-orphan with a v2 duplicate.
+            # Drop the placeholder first: it's a core-written stand-in, not real
+            # device state, and v2's platform setup writes the real state moments
+            # later. (No-op during a cold boot, where no state exists yet.)
+            hass.states.async_remove(ent.entity_id)
+            try:
+                registry.async_update_entity_platform(
+                    ent.entity_id,
+                    DOMAIN,
+                    new_config_entry_id=entry.entry_id,
+                    new_unique_id=new_uid,
+                )
+            except ValueError:
+                # Entity unexpectedly still loaded — skip it (stays an orphan,
+                # retried on a later reload) rather than aborting the whole run.
+                _LOGGER.warning(
+                    "Could not move %s to the %s platform; leaving it for a "
+                    "later run",
+                    ent.entity_id,
+                    DOMAIN,
+                    exc_info=True,
+                )
+                continue
+        else:
+            registry.async_update_entity(
+                ent.entity_id,
+                new_unique_id=new_uid,
+                config_entry_id=entry.entry_id,
+            )
         migrated.append((ent.entity_id, ent.unique_id, new_uid))
 
     if not migrated and not deleted:

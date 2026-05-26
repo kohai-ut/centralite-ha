@@ -93,21 +93,20 @@ def _referenced_load_ids(text: str) -> set[int]:
 def _named_switches(text: str) -> dict[int, str]:
     """Map each NAMED keypad button to its global switch index (1-384).
 
-    A section ``[<letter><number>]`` (A-P, 1-24) is one keypad button. Only
-    buttons the installer NAMED are imported — the labeled ones are the ones
-    worth exposing (most of the 384 slots are unnamed/unused).
+    A section ``[<letter><number>]`` is one keypad input: the LETTER is the
+    input tab (the Elegance Programming Software shows tabs A-F; the protocol
+    allows up to 16, A-P) and the NUMBER is the button within that tab (1-24).
+    Only buttons the installer NAMED are imported — the labeled ones are the
+    ones worth exposing.
 
-    Index mapping is derived from the ^H switch-bitmap layout (see
-    ``parse_switch_bitmap``): switches are numbered ``entry*16 + stars + 1``
-    over 24 entries x 16 STARS positions. Here the button NUMBER (1-24) is the
-    entry and the LETTER (A-P) is the STARS position, so::
+    Index mapping (CONFIRMED against a real install's known indices):
 
-        idx = (number - 1) * 16 + (letter - 'A') + 1
+        idx = (letter - 'A') * 24 + number
 
-    NOTE: this mapping is DERIVED, not yet hardware-verified (the test bridge
-    wasn't emitting switch events to confirm it). If an imported switch entity
-    doesn't track its physical button, THIS is the formula to revisit; the
-    leading alternative is ``letter_index * 24 + number``.
+    i.e. the tab is the high-order term (24 buttons per tab), the button number
+    the low-order term. With A-P that spans 1-384, matching the ^H switch-bitmap
+    capacity. Verified end-to-end against six labeled buttons whose v1 indices
+    were known: B20->44, B22->46, D3->75, E4->100, E10->106, E11->107.
     """
     switches: dict[int, str] = {}
     section: str | None = None
@@ -123,7 +122,7 @@ def _named_switches(text: str) -> dict[int, str]:
             # stray/garbage section can't produce an idx > 384 and abort the
             # whole import on the later range check.
             if 1 <= number <= 24:
-                idx = (number - 1) * 16 + (ord(letter) - ord("A")) + 1
+                idx = (ord(letter) - ord("A")) * 24 + number
                 switches[idx] = name
 
     for raw_line in text.splitlines():

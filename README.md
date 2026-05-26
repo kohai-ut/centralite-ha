@@ -94,13 +94,14 @@ Once configured, **⋮ → Configure** on the integration:
 
 When v2 first loads and detects v1 entities (by their `elegance.L001`/`jetstream.JSL001`/etc. unique_ids), it automatically:
 
-1. Renames them to the v2 format (`{entry_id}_load_001`, etc.)
-2. Associates them with the new config entry
-3. Removes obsolete `scene*OFF` entries (the v2 scene-switch absorbs both states)
-4. Preserves all customizations (area, icon, alias, friendly name override)
-5. Surfaces a **Repairs issue** with the full migration log
+1. **Renames lights, switches, and buttons** to the v2 format (`{entry_id}_load_001`, etc.), associates them with the new config entry, and **preserves their `entity_id` and all customizations** (area, icon, alias, friendly-name override, dashboard placement). These keep working untouched.
+2. **Deletes the old `scene.*` entities (both `*ON` and `*OFF`).** In v2 a scene is a **`switch.` entity** (one stateful scene-switch, no ON/OFF pair) — a different domain from v1's `scene.*`, so the old entity can't be carried over and is removed. v2 creates a fresh scene-switch in its place.
+3. Surfaces a **Repairs issue** with the full migration log.
 
-**You'll need to update any automation YAML** that referenced the old entity IDs — HA cannot rewrite those automatically. The Repairs issue lists every renamed entity for cross-reference.
+**Two things to fix up after migrating:**
+
+- **Scenes** now live under the `switch.` domain with new `entity_id`s (e.g. `switch.<name>`). Automations/scripts that called `scene.turn_on(scene.<name>)` must switch to `switch.turn_on`/`switch.turn_off` on the new entities, and a scene's area/icon customization won't carry across the domain change (re-apply it on the new switch if you'd set one).
+- **Any automation YAML** referencing old IDs — HA can't rewrite those automatically. The Repairs issue lists every change for cross-reference.
 
 For a safe, step-by-step upgrade procedure on a single production instance (full backup → migrate → verify → roll back if needed), see [docs/UPGRADE_TESTING.md](docs/UPGRADE_TESTING.md).
 
@@ -110,7 +111,7 @@ For a safe, step-by-step upgrade procedure on a single production instance (full
 - **Per-load push events require Customer Options bit set.** In the Elegance Programming Software, each load must be configured for "third party output" individually, OR DIP Switch 5 must be ON (which pushes all loads, one per second). If neither is set, the integration relies on the safety-net poll for updates.
 - **`.elg` format is REV 1.1.** Future Centralite software revisions could change the format. The parser fails gracefully with a clear error if the format isn't recognized; fall back to manual ID entry.
 - **Device triggers fire on HA-originated button commands too.** A device trigger reacts to the bridge's button-activity report, which JetStream also emits when HA itself taps a button (via a button switch entity), not only on a physical wall press. The protocol doesn't distinguish origin, so if you both expose a button as a switch and trigger on it, the trigger fires on HA-initiated taps as well.
-- **Elegance switch import is experimental.** Named keypad buttons in the `.elg` are imported as switch entities, but two things are unverified: (1) the keypad `letter+number` → global switch-index mapping is derived from the protocol's `^H` bitmap layout, not confirmed on hardware — if a switch entity doesn't track its physical button, the mapping needs adjustment; and (2) a switch only reports state if the bridge is actually programmed to emit press/release events for it (the per-switch "send action" flag, written via the Programming Software). Press-via-HA (`^I`) works regardless.
+- **Elegance switch state requires the per-switch "send action" flag.** Named keypad buttons in the `.elg` are imported as switch entities. The keypad `letter+number` → global switch-index mapping (`idx = (letter-'A')*24 + number`) is **confirmed** against a real install. The remaining caveat is *state*: a switch only reports on/off if the bridge is actually programmed to emit press/release events for it (the per-switch "send action" flag, set in the Programming Software). Press-via-HA (`^I`) works regardless.
 
 ## Troubleshooting
 

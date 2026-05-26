@@ -234,10 +234,10 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         scene_ids.add(idx)
                         if name:
                             scene_names[str(idx)] = name
-                    # Named keypad buttons -> switch entities. Mapping from the
-                    # [letter][number] coordinate to the global switch index is
-                    # derived (see parsers.elg._named_switches) and not yet
-                    # hardware-verified.
+                    # Named keypad buttons -> switch entities. The
+                    # [letter][number] -> global switch index mapping is
+                    # (letter-'A')*24 + number (see parsers.elg._named_switches),
+                    # confirmed against a real install.
                     for idx, name in cfg.switches.items():
                         switch_ids.add(idx)
                         switch_names[str(idx)] = name
