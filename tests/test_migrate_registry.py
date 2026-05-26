@@ -71,6 +71,25 @@ async def test_jetstream_migration_moves_platform(hass):
     assert m_btn.config_entry_id == entry.entry_id
 
 
+async def test_jetstream_migration_clears_unavailable_placeholder(hass):
+    """The realistic running-HA path: once HA has started it writes an
+    'unavailable' restored placeholder into the state machine for the orphan,
+    which trips async_update_entity_platform's not-loaded guard. The migration
+    must drop that placeholder first, or the entity re-orphans with a v2
+    duplicate (a cold-boot-only test misses this — adding v2 via the UI without
+    a reboot is the common upgrade path)."""
+    registry = er.async_get(hass)
+    ent = registry.async_get_or_create("light", "centralite-jetstream", "jetstream.JSL001")
+    # What HA's _write_unavailable_states does for an orphan after START:
+    hass.states.async_set(ent.entity_id, "unavailable", {"restored": True})
+    entry = _entry(hass, system=SYSTEM_JETSTREAM)
+    await async_migrate_entries(hass, entry)
+    migrated = registry.async_get(ent.entity_id)
+    assert migrated.platform == "centralite"  # moved despite the placeholder
+    assert migrated.unique_id == f"{entry.entry_id}_load_001"
+    assert migrated.config_entry_id == entry.entry_id
+
+
 async def test_scenes_are_deleted_not_renamed(hass):
     """v1 scenes are `scene.*` entities; v2 scenes are `switch.*`. Renaming the
     scene-domain row's unique_id can't let the v2 switch adopt it (registry keys

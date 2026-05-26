@@ -186,9 +186,16 @@ async def async_migrate_entries(hass: HomeAssistant, entry: ConfigEntry) -> None
             # leave the v1 one orphaned (confirmed on a real upgrade). Move the
             # platform too. (Elegance v1 already used the "centralite" platform,
             # so it takes the cheaper async_update_entity path below.)
-            # async_update_entity_platform is HA's tool for exactly this; it
-            # requires the entity not be loaded — true here, since v1's
-            # integration is gone and v2 hasn't set up its platforms yet.
+            # async_update_entity_platform is HA's tool for exactly this, but it
+            # refuses to migrate an entity that has a (non-unknown) state. Once
+            # HA has started, it writes an "unavailable" RESTORED placeholder
+            # into the state machine for every orphaned registry row — so on a
+            # running-HA upgrade (add v2 via the UI without a reboot) that guard
+            # would trip and the entity would re-orphan with a v2 duplicate.
+            # Drop the placeholder first: it's a core-written stand-in, not real
+            # device state, and v2's platform setup writes the real state moments
+            # later. (No-op during a cold boot, where no state exists yet.)
+            hass.states.async_remove(ent.entity_id)
             try:
                 registry.async_update_entity_platform(
                     ent.entity_id,
