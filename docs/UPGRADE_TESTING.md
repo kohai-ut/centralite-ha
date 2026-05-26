@@ -106,6 +106,13 @@ remove the v1 code *without* losing those entities:
    run more than one bridge (e.g. an Elegance *and* a JetStream), add the
    integration once per bridge, as separate config entries pointing at each
    port.
+
+   > A **broken/placeholder integration icon** here is cosmetic — a brand-icon
+   > quirk, not a setup failure. It doesn't affect the config flow or the
+   > entities. (If the config flow itself errors with *"Config flow could not be
+   > loaded: 500"*, that's different — check the log for a `serialx` dependency
+   > conflict and ensure you're on a build with `serialx>=1.7.3` in the
+   > manifest.)
 6. **Verify:**
    - **Settings → Repairs** → the migration issue lists every rename and the
      removed `scene*OFF` entries. The count should match your entity count.
