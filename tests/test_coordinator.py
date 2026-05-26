@@ -107,6 +107,20 @@ async def test_switch_push_press_then_release(hass):
     await coord.async_shutdown()
 
 
+async def test_switch_event_logged_at_debug(hass, caplog):
+    """A push event logs its decoded form, so watching the log during testing
+    shows which device/button/action the bridge reported."""
+    import logging
+
+    proto = FakeProtocol(bulk_loads={})
+    coord = CentraliteCoordinator(hass, _entry(hass), proto)
+    await coord.async_init()
+    with caplog.at_level(logging.DEBUG, logger="custom_components.centralite.coordinator"):
+        proto.switch_cb(SwitchEvent(idx=44, action="tap", button=1))
+    assert "switch event: idx=44 button=1 action=tap" in caplog.text
+    await coord.async_shutdown()
+
+
 async def test_scene_commanded_state_when_no_push(hass):
     """Elegance has no scene push: activate_scene reflects commanded state."""
     proto = FakeProtocol(supports_scene_push=False, bulk_loads={})

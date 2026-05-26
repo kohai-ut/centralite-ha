@@ -198,6 +198,11 @@ class _BaseSerialProtocol(CentraliteProtocol):
                 _LOGGER.exception("Unexpected reader error")
                 continue
             if line:
+                # Every inbound line, including spontaneous push events that
+                # parse cleanly. The only window into what the bridge actually
+                # emits — invaluable for verifying e.g. which index a physical
+                # keypad reports. (Command responses also re-log as recv:.)
+                _LOGGER.debug("rx: %r", line)
                 self._dispatch(line)
 
     def _notify_disconnect(self, error: Exception | None) -> None:

@@ -418,6 +418,31 @@ def test_dow_encoding_saturday_is_seven():
     assert encode_bcd_clock(dt)[6:8] == "07"
 
 
+async def test_inbound_line_logged_at_debug():
+    """Every received line is logged (rx:) so the raw bridge traffic is visible
+    when debug logging is on — the key window for verifying, e.g., which index
+    a physical keypad reports. Uses a manual handler (not the caplog fixture)
+    so this stays runnable under the standalone smoke-test runner."""
+    import logging
+
+    p, reader, _w = await _make_protocol()
+    seen: list[str] = []
+    handler = logging.Handler()
+    handler.emit = lambda record: seen.append(record.getMessage())
+    logger = logging.getLogger("custom_components.centralite.protocol._base")
+    prev = logger.level
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    try:
+        reader.feed_data(b"P044\r")  # a physical switch-press push event
+        await asyncio.sleep(0.02)
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(prev)
+        await p.disconnect()
+    assert any("rx:" in m and "P044" in m for m in seen), seen
+
+
 # --- Standalone smoke-test runner ---
 
 if __name__ == "__main__":
