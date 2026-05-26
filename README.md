@@ -94,13 +94,14 @@ Once configured, **⋮ → Configure** on the integration:
 
 When v2 first loads and detects v1 entities (by their `elegance.L001`/`jetstream.JSL001`/etc. unique_ids), it automatically:
 
-1. Renames them to the v2 format (`{entry_id}_load_001`, etc.)
-2. Associates them with the new config entry
-3. Removes obsolete `scene*OFF` entries (the v2 scene-switch absorbs both states)
-4. Preserves all customizations (area, icon, alias, friendly name override)
-5. Surfaces a **Repairs issue** with the full migration log
+1. **Renames lights, switches, and buttons** to the v2 format (`{entry_id}_load_001`, etc.), associates them with the new config entry, and **preserves their `entity_id` and all customizations** (area, icon, alias, friendly-name override, dashboard placement). These keep working untouched.
+2. **Deletes the old `scene.*` entities (both `*ON` and `*OFF`).** In v2 a scene is a **`switch.` entity** (one stateful scene-switch, no ON/OFF pair) — a different domain from v1's `scene.*`, so the old entity can't be carried over and is removed. v2 creates a fresh scene-switch in its place.
+3. Surfaces a **Repairs issue** with the full migration log.
 
-**You'll need to update any automation YAML** that referenced the old entity IDs — HA cannot rewrite those automatically. The Repairs issue lists every renamed entity for cross-reference.
+**Two things to fix up after migrating:**
+
+- **Scenes** now live under the `switch.` domain with new `entity_id`s (e.g. `switch.<name>`). Automations/scripts that called `scene.turn_on(scene.<name>)` must switch to `switch.turn_on`/`switch.turn_off` on the new entities, and a scene's area/icon customization won't carry across the domain change (re-apply it on the new switch if you'd set one).
+- **Any automation YAML** referencing old IDs — HA can't rewrite those automatically. The Repairs issue lists every change for cross-reference.
 
 For a safe, step-by-step upgrade procedure on a single production instance (full backup → migrate → verify → roll back if needed), see [docs/UPGRADE_TESTING.md](docs/UPGRADE_TESTING.md).
 

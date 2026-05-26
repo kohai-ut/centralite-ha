@@ -58,20 +58,22 @@ def test_elegance_switch_high_number():
 # --- Elegance scenes ---
 
 
-def test_elegance_scene_on_renames():
-    _expect_migrate("elegance.scene4ON", "scene_004")
+# All v1 scenes are deleted (not renamed): a v1 scene is a scene.* entity but
+# a v2 scene is a switch.* entity, so the old row can't be adopted by rename.
+def test_elegance_scene_on_deletes():
+    _expect_delete("elegance.scene4ON")
 
 
 def test_elegance_scene_off_deletes():
     _expect_delete("elegance.scene4OFF")
 
 
-def test_elegance_scene_no_suffix_renames():
-    _expect_migrate("elegance.scene7", "scene_007")
+def test_elegance_scene_no_suffix_deletes():
+    _expect_delete("elegance.scene7")
 
 
-def test_elegance_scene_high_number():
-    _expect_migrate("elegance.scene99ON", "scene_099")
+def test_elegance_scene_high_number_deletes():
+    _expect_delete("elegance.scene99ON")
 
 
 # --- JetStream loads ---
@@ -110,16 +112,16 @@ def test_jetstream_switch_basic():
 # --- JetStream scenes ---
 
 
-def test_jetstream_scene_on_renames():
-    _expect_migrate("jetstream.scene4ON", "scene_004")
+def test_jetstream_scene_on_deletes():
+    _expect_delete("jetstream.scene4ON")
 
 
 def test_jetstream_scene_off_deletes():
     _expect_delete("jetstream.scene4OFF")
 
 
-def test_jetstream_scene_no_suffix():
-    _expect_migrate("jetstream.scene12", "scene_012")
+def test_jetstream_scene_no_suffix_deletes():
+    _expect_delete("jetstream.scene12")
 
 
 # --- Skipping non-matching IDs ---
