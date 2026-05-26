@@ -38,14 +38,21 @@ async def test_renames_and_reassigns_elegance_load(hass):
     assert migrated.config_entry_id == entry.entry_id
 
 
-async def test_scene_off_is_deleted(hass):
+async def test_scenes_are_deleted_not_renamed(hass):
+    """v1 scenes are `scene.*` entities; v2 scenes are `switch.*`. Renaming the
+    scene-domain row's unique_id can't let the v2 switch adopt it (registry keys
+    on domain+platform+unique_id), so it would orphan an unavailable `scene.*`.
+    Both ON and OFF must be DELETED. Uses domain="scene" to match real v1 —
+    the earlier test used "switch" and so never exercised the domain mismatch."""
     registry = er.async_get(hass)
-    on = _orphan(registry, "elegance", "elegance.scene4ON", domain="switch")
-    off = _orphan(registry, "elegance", "elegance.scene4OFF", domain="switch")
+    on = _orphan(registry, "elegance", "elegance.scene4ON", domain="scene")
+    off = _orphan(registry, "elegance", "elegance.scene4OFF", domain="scene")
+    plain = _orphan(registry, "elegance", "elegance.scene7", domain="scene")
     entry = _entry(hass)
     await async_migrate_entries(hass, entry)
-    assert registry.async_get(on.entity_id).unique_id == f"{entry.entry_id}_scene_004"
-    assert registry.async_get(off.entity_id) is None  # absorbed/removed
+    assert registry.async_get(on.entity_id) is None
+    assert registry.async_get(off.entity_id) is None
+    assert registry.async_get(plain.entity_id) is None
 
 
 async def test_does_not_adopt_other_systems_orphans(hass):

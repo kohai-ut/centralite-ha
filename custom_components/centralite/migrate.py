@@ -5,26 +5,35 @@ or kohai-ut/centralite_jetstream, both archived at v1.0.1) to this v2
 integration, their existing entities live in HA's entity_registry with
 unique_ids in the legacy format:
 
-    elegance.L001         (light)
-    elegance.SW044        (switch)
-    elegance.scene4ON     (scene -- becomes a switch in v2)
-    elegance.scene4OFF    (the paired OFF entity -- removed in v2)
-    jetstream.JSL001      (light)
-    jetstream.JSSW04401   (button device 044, button 01)
-    jetstream.scene4ON / OFF
+    elegance.L001         (light  -> renamed/adopted)
+    elegance.SW044        (switch -> renamed/adopted)
+    elegance.scene4ON     (scene  -> DELETED; v2 scene is a switch, see below)
+    elegance.scene4OFF    (scene  -> DELETED)
+    jetstream.JSL001      (light  -> renamed/adopted)
+    jetstream.JSSW04401   (button device 044, button 01 -> renamed/adopted)
+    jetstream.scene4ON / OFF (-> DELETED)
 
 Lowercase variants (elegance.l001, JETSTREAM.JSL001) are handled too;
 the rules are case-insensitive.
 
 This module scans the registry for those patterns, scoped to the entry's
 own system (an Elegance entry only adopts elegance.* orphans, a JetStream
-entry only jetstream.*), renames them to the v2 unique_id scheme
-({entry_id}_load_001, etc.), and removes the now-redundant scene*OFF entries. The function is idempotent — subsequent
-runs find nothing because migrated entries are no longer orphans and
-already use the new format.
+entry only jetstream.*), renames the load/switch/button entities to the v2
+unique_id scheme ({entry_id}_load_001, etc.), and DELETES the old scene
+entities. The function is idempotent — subsequent runs find nothing because
+migrated entries are no longer orphans and already use the new format.
 
-Customizations (area, icon, alias, friendly_name override, dashboard
-placement) are preserved because we use entity_registry.async_update_entity
+Scenes are deleted rather than renamed because a v1 scene is a `scene.*`
+entity but a v2 scene is a `switch.*` entity (a stateful scene-switch, no
+more -ON/-OFF pair). The entity registry keys on (domain, platform,
+unique_id), so renaming a scene-domain row's unique_id can never let the
+v2 switch entity adopt it — it would just leave an orphaned, unavailable
+`scene.*` behind. v2 creates the scene-switch fresh; the only thing that
+can't carry across the domain change is a scene's area/icon customization.
+
+Customizations on the renamed load/switch/button entities (area, icon,
+alias, friendly_name override, dashboard placement) ARE preserved because
+those stay in the same domain and we use entity_registry.async_update_entity
 rather than removing and recreating.
 
 A Repairs issue is surfaced with the migration log so the user can find
@@ -70,18 +79,15 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str] | None]] = [
         re.compile(r"^elegance\.SW(\d+)$", re.IGNORECASE),
         lambda m: f"switch_{int(m.group(1)):03d}",
     ),
-    # Elegance scene OFF: delete (absorbed into scene-switch)
+    # Elegance scenes: delete all of them. v1 scenes are `scene.*` entities,
+    # but a v2 scene is a *switch* entity — a different domain — so the old row
+    # cannot be adopted by renaming its unique_id; doing so just leaves an
+    # orphaned, unavailable `scene.*` entity behind. The v2 scene-switch is
+    # created fresh instead. (Scene area/icon customizations therefore do not
+    # carry across the domain change — an inherent limitation, not a choice.)
     (re.compile(r"^elegance\.scene(\d+)OFF$", re.IGNORECASE), None),
-    # Elegance scene ON: rename to scene_NNN
-    (
-        re.compile(r"^elegance\.scene(\d+)ON$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
-    # Elegance scene (no ON/OFF suffix): rename
-    (
-        re.compile(r"^elegance\.scene(\d+)$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
+    (re.compile(r"^elegance\.scene(\d+)ON$", re.IGNORECASE), None),
+    (re.compile(r"^elegance\.scene(\d+)$", re.IGNORECASE), None),
     # JetStream load: jetstream.JSL001 -> load_001
     (
         re.compile(r"^jetstream\.JSL(\d+)$", re.IGNORECASE),
@@ -97,17 +103,11 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str] | None]] = [
         re.compile(r"^jetstream\.SW(\d+)$", re.IGNORECASE),
         lambda m: f"switch_{int(m.group(1)):03d}",
     ),
-    # JetStream scene OFF: delete
+    # JetStream scenes: delete all (same reason as Elegance — v2 scene is a
+    # switch entity, so the old scene.* row can't be adopted by rename).
     (re.compile(r"^jetstream\.scene(\d+)OFF$", re.IGNORECASE), None),
-    # JetStream scene ON: rename
-    (
-        re.compile(r"^jetstream\.scene(\d+)ON$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
-    (
-        re.compile(r"^jetstream\.scene(\d+)$", re.IGNORECASE),
-        lambda m: f"scene_{int(m.group(1)):03d}",
-    ),
+    (re.compile(r"^jetstream\.scene(\d+)ON$", re.IGNORECASE), None),
+    (re.compile(r"^jetstream\.scene(\d+)$", re.IGNORECASE), None),
 ]
 
 
