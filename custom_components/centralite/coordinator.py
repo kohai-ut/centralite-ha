@@ -16,6 +16,7 @@ from homeassistant.const import CONF_DEVICE_ID, CONF_TYPE
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_SUBTYPE,
@@ -24,6 +25,7 @@ from .const import (
     DOMAIN,
     EVENT_BUTTON,
     OPT_POLL_INTERVAL,
+    OPT_SYNC_CLOCK_ON_CONNECT,
     SYSTEM_LABELS,
     button_subtype,
 )
@@ -97,7 +99,30 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         await self.protocol.connect()
         await self._prime_loads()
+        await self._sync_clock_if_enabled()
         self._schedule_safety_poll()
+
+    async def _sync_clock_if_enabled(self) -> None:
+        """Set the bridge clock to HA's local time, if the option is enabled.
+
+        Called only after a successful connect (from async_init and after a
+        reconnect), so it is inherently free of the boot race that an
+        automation triggered on 'HA start' would face — the serial link is
+        already up. Swallows its own errors: a clock-set failure must never
+        block setup or abort a reconnect. Elegance-only (supports_clock).
+        """
+        if not self.protocol.supports_clock:
+            return
+        if not self.config_entry.options.get(OPT_SYNC_CLOCK_ON_CONNECT, False):
+            return
+        if not self.protocol.connected:
+            return  # link dropped during connect/prime — don't write a dead port
+        try:
+            now = dt_util.now()
+            await self.protocol.set_clock(now)
+            _LOGGER.debug("Synced Centralite bridge clock to %s", now.isoformat())
+        except Exception:
+            _LOGGER.warning("Failed to sync Centralite bridge clock", exc_info=True)
 
     async def _prime_loads(self) -> None:
         """Seed initial load state from a bulk query, where the bridge supports it."""
@@ -240,6 +265,13 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.info("Reconnected to Centralite bridge")
             self._reconnect_delay = RECONNECT_INITIAL_DELAY
             self.async_set_updated_data(self.data)  # clears error -> available
+            await self._sync_clock_if_enabled()
+            # The clock sync awaits a write; the link (or the entry) may have
+            # gone away meanwhile. Re-check before arming the poll so we don't
+            # schedule a ^G against a now-dead link (a fresh _on_disconnect has
+            # already scheduled its own reconnect in that case).
+            if self._shutting_down or not self.protocol.connected:
+                return
             self._schedule_safety_poll()
         else:
             self._reconnect_delay = min(self._reconnect_delay * 2, RECONNECT_MAX_DELAY)

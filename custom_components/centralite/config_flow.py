@@ -40,6 +40,7 @@ from .const import (
     OPT_POLL_INTERVAL,
     OPT_SCENE_NAMES,
     OPT_SWITCH_NAMES,
+    OPT_SYNC_CLOCK_ON_CONNECT,
     SYSTEM_ELEGANCE,
     SYSTEM_JETSTREAM,
     SYSTEM_LABELS,
@@ -353,21 +354,34 @@ class CentraliteOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        # The clock-sync toggle only applies to Elegance (JetStream has no
+        # clock command), so only offer/persist it there.
+        is_elegance = self.config_entry.data.get(CONF_SYSTEM_TYPE) == SYSTEM_ELEGANCE
+
         if user_input is not None:
             # Merge with existing options (preserving name dicts)
             merged = dict(self.config_entry.options)
             merged[OPT_POLL_INTERVAL] = int(user_input[OPT_POLL_INTERVAL])
+            if is_elegance:
+                merged[OPT_SYNC_CLOCK_ON_CONNECT] = bool(
+                    user_input.get(OPT_SYNC_CLOCK_ON_CONNECT, False)
+                )
             return self.async_create_entry(title="", data=merged)
 
         cur = self.config_entry.options
-        schema = vol.Schema(
-            {
+        schema_dict: dict[Any, Any] = {
+            vol.Optional(
+                OPT_POLL_INTERVAL,
+                default=cur.get(OPT_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+            ): NumberSelector(
+                NumberSelectorConfig(min=0, max=3600, step=1, mode=NumberSelectorMode.BOX)
+            ),
+        }
+        if is_elegance:
+            schema_dict[
                 vol.Optional(
-                    OPT_POLL_INTERVAL,
-                    default=cur.get(OPT_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
-                ): NumberSelector(
-                    NumberSelectorConfig(min=0, max=3600, step=1, mode=NumberSelectorMode.BOX)
-                ),
-            }
-        )
-        return self.async_show_form(step_id="init", data_schema=schema)
+                    OPT_SYNC_CLOCK_ON_CONNECT,
+                    default=cur.get(OPT_SYNC_CLOCK_ON_CONNECT, False),
+                )
+            ] = BooleanSelector()
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_dict))
