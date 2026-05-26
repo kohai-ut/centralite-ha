@@ -102,6 +102,8 @@ When v2 first loads and detects v1 entities (by their `elegance.L001`/`jetstream
 
 **You'll need to update any automation YAML** that referenced the old entity IDs — HA cannot rewrite those automatically. The Repairs issue lists every renamed entity for cross-reference.
 
+For a safe, step-by-step upgrade procedure on a single production instance (full backup → migrate → verify → roll back if needed), see [docs/UPGRADE_TESTING.md](docs/UPGRADE_TESTING.md).
+
 ## Known limitations
 
 - **Elegance scene state is "commanded only".** The Elegance bridge has no scene-state push event. When you activate a scene from HA, the scene-switch reflects the commanded state. Scenes activated externally (physical button, timed event) won't update the HA state. JetStream does not have this limitation (it pushes `SCN` events).
