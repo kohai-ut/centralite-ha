@@ -221,14 +221,24 @@ def test_referenced_loads_empty_when_none():
 
 
 def test_named_switches_mapping():
-    """Named keypad buttons map to a global switch index; unnamed ones are skipped."""
+    """Named keypad buttons map to a global switch index; unnamed ones are skipped.
+
+    Formula idx = (letter-'A')*24 + number, confirmed against a real install
+    (e.g. E4 -> 100 = "N Garage Lights", E10 -> 106, E11 -> 107)."""
     text = (
-        "[A1]\n  NAME=\n  LOAD/SCENE=L\n  #=12\n"           # unnamed -> skip
-        "[B1]\n  NAME=Front Entry Right\n  LOAD/SCENE=L\n"   # (1-1)*16+1+1 = 2
-        "[E4]\n  NAME=North Garage Lights\n  LOAD/SCENE=L\n"  # (4-1)*16+4+1 = 53
+        "[A1]\n  NAME=\n  LOAD/SCENE=L\n  #=12\n"            # unnamed -> skip
+        "[B1]\n  NAME=Front Entry Right\n  LOAD/SCENE=L\n"   # 1*24+1 = 25
+        "[E4]\n  NAME=N Garage Lights\n  LOAD/SCENE=L\n"     # 4*24+4 = 100
+        "[E10]\n  NAME=S Garage North Light\n  LOAD/SCENE=L\n"  # 4*24+10 = 106
+        "[E11]\n  NAME=S Garage South Light\n  LOAD/SCENE=L\n"  # 4*24+11 = 107
     )
     result = parse_elg(text)
-    assert result.switches == {2: "Front Entry Right", 53: "North Garage Lights"}
+    assert result.switches == {
+        25: "Front Entry Right",
+        100: "N Garage Lights",
+        106: "S Garage North Light",
+        107: "S Garage South Light",
+    }
 
 
 def test_switches_empty_when_no_keypads():
@@ -238,7 +248,7 @@ def test_switches_empty_when_no_keypads():
 def test_named_switches_skips_out_of_range_button():
     """A stray [A99] (button# > 24) must be skipped, not poison the whole import."""
     text = "[A99]\n  NAME=Bogus\n[B1]\n  NAME=Real\n"
-    assert parse_elg(text).switches == {2: "Real"}
+    assert parse_elg(text).switches == {25: "Real"}  # 1*24+1
 
 
 # --- parse_csv_ids tests ---

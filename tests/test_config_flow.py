@@ -111,15 +111,15 @@ async def test_elg_import_creates_named_switches(hass):
     result = await _advance_to_import(hass)
     elg = (
         "[LOAD 1]\nNAME=Hall\n"
-        "[E4]\nNAME=North Garage Lights\nLOAD/SCENE=L\n"  # -> switch idx 53
+        "[E4]\nNAME=North Garage Lights\nLOAD/SCENE=L\n"  # -> switch idx 100
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"elg_text": elg, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_SWITCH_IDS] == [53]
-    assert result["options"][OPT_SWITCH_NAMES] == {"53": "North Garage Lights"}
+    assert result["data"][CONF_SWITCH_IDS] == [100]
+    assert result["options"][OPT_SWITCH_NAMES] == {"100": "North Garage Lights"}
 
 
 async def test_manual_load_ids_always_enabled(hass):
