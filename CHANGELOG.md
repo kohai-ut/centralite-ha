@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-05-26
+
+### Changed
+
+- **New brand icon.** Replaced the integration icon with a bolder, higher-contrast mark (white sunburst on CentraLite orange) that stays legible at the small size Home Assistant renders it in the integrations list.
+
 ## [2.0.0] - 2026-05-26
 
 First stable release of the v2 rewrite. Consolidates the `2.0.0a1`–`a3` alpha series, with the full v1→v2 migration path validated end-to-end against real Elegance and JetStream hardware. The fixes below were hardened by a live upgrade test; anyone still on a pre-release alpha should restore their pre-upgrade backup and re-migrate on `2.0.0`.
