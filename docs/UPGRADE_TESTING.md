@@ -42,29 +42,41 @@ confirm two things the suite can't:
 ## Phase 1 — Migration (the real upgrade path)
 
 The migration adopts v1 entities that are **still in the entity registry** but
-whose integration is gone (orphans). The trick is to free the serial port
-without losing those entities:
+whose integration is gone (orphans). The trick is to free the serial port and
+remove the v1 code *without* losing those entities:
 
-> **Remove the v1 integration _code_, but do NOT delete the v1 _config entry_.**
-> Deleting the config entry in the UI purges its entities — and then there is
-> nothing left to migrate (you'd get a fresh install, losing history). Removing
-> only the code leaves the entry failing to load and its entities orphaned in
-> the registry, which is exactly what migration consumes.
+> **Remove the v1 integration _code_, but do NOT delete any v1 _config entry_.**
+> If your v1 was set up through the UI (it has a config entry), deleting that
+> entry purges its entities and there's nothing left to migrate. Removing only
+> the code leaves the entities orphaned in the registry — which is what
+> migration consumes. (A **YAML-configured** v1 has no config entry at all,
+> just entities in the registry; the same orphan-and-migrate flow applies, and
+> there's nothing in Devices & Services to leave alone.)
 
-1. In **HACS**, add this v2 repo as a custom repository and install it. Don't
-   restart yet.
-2. **Remove the v1 integration code.** How depends on how v1 was installed:
-   - **Manual install** (the v1 integrations were copied into
-     `custom_components/` by hand) — delete the `custom_components/centralite_elegance`
-     and `custom_components/centralite_jetstream` folders via the Samba share,
-     SSH/Terminal, or the File Editor add-on.
-   - **HACS install** — uninstall the `centralite_elegance` /
-     `centralite_jetstream` downloads in HACS.
+> **Order matters — remove v1 _before_ installing v2.** v1 Elegance used the
+> `centralite` domain, so its code folder is `custom_components/centralite` —
+> **the exact folder v2 installs into.** If you install v2 first and then delete
+> `custom_components/centralite`, you delete v2. So: remove v1, *then* install
+> v2. (If your v1 Elegance folder is instead named `centralite_elegance`, there
+> is no collision and order is flexible — but removing-first works either way.)
 
-   Either way, **leave the v1 config entries in Devices & Services untouched.**
-
-   **If your v1 was YAML-configured**, also remove its `configuration.yaml`
-   entries now — v2 is **UI-only and has no YAML configuration**:
+1. **Back up and remove the v1 code.** From your config directory (`/config` in
+   the Terminal & SSH add-on). Adjust the folder names to match your install —
+   a YAML-configured v1 Elegance is `custom_components/centralite`; a v1
+   installed from the archived repos is `custom_components/centralite_elegance`
+   / `centralite_jetstream`:
+   ```bash
+   cd /config
+   tar czf centralite-v1-$(date +%F).tar.gz           custom_components/centralite
+   tar czf centralite-jetstream-v1-$(date +%F).tar.gz custom_components/centralite-jetstream
+   tar tzf centralite-v1-$(date +%F).tar.gz | head     # verify before deleting
+   rm -rf custom_components/centralite custom_components/centralite-jetstream
+   ```
+   (Installed v1 via HACS instead? Uninstall the downloads in HACS. File Editor
+   or Samba work in place of the shell.) **Leave any v1 config entries in
+   Devices & Services untouched.**
+2. **Remove the v1 YAML configuration** (v2 is **UI-only and has no YAML
+   configuration**):
    - Delete the `centralite:` and/or `centralite-jetstream:` blocks (the ones
      with a `port:`). This matters most for `centralite:` — v2 reuses the
      `centralite` domain but is config-entry-only, so a leftover `centralite:`
@@ -76,10 +88,13 @@ without losing those entities:
      (children like `…protocol._base` and `…coordinator` inherit it).
    - Check your `!include` files for stray v1 platform entries:
      `grep -rn "platform: centralite" /config/*.yaml` — remove any you find.
-
-   Restart Home Assistant. The v1 entries now show "integration not found" and
-   their entities orphan in the registry — which is what migration consumes.
-3. **Settings → Devices & Services → Add Integration → Centralite.** Choose the
+3. **Restart Home Assistant.** With the v1 code and YAML gone, its entities now
+   sit orphaned in the registry (any v1 config entry shows "integration not
+   found") — which is what migration consumes.
+4. **Install v2** via HACS (add this repo as a custom repository → install). It
+   lands in the now-clean `custom_components/centralite`. Restart Home Assistant
+   again so the new integration is available.
+5. **Settings → Devices & Services → Add Integration → Centralite.** Choose the
    system type and the serial port; optionally paste your `.elg`/`.jts` for
    friendly names. On load, v2 renames the orphaned `elegance.*` /
    `jetstream.*` unique_ids to the v2 scheme and adopts them. The port is free
@@ -87,7 +102,7 @@ without losing those entities:
    run more than one bridge (e.g. an Elegance *and* a JetStream), add the
    integration once per bridge, as separate config entries pointing at each
    port.
-4. **Verify:**
+6. **Verify:**
    - **Settings → Repairs** → the migration issue lists every rename and the
      removed `scene*OFF` entries. The count should match your entity count.
    - **`entity_id`s are preserved** (migration changes the `unique_id`, not the
@@ -100,7 +115,8 @@ without losing those entities:
      scene. Then enable the **Sync bridge clock on connect** option (Configure),
      reload, and confirm the bridge clock was set (or press the **Sync Clock**
      button).
-5. Delete the now-empty v1 config entries (their entities have moved to v2).
+7. Delete any now-empty v1 config entries (their entities have moved to v2). A
+   YAML-configured v1 has none, so skip this.
 
 ## Phase 2 — Fresh-import path (optional; do it last)
 
