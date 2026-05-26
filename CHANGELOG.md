@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [2.0.0a2] - 2026-05-25
+
+This alpha rolls up all the post-`2.0.0a1` work: the protocol/hardware fixes,
+`.elg`/`.jts` import improvements, device triggers, auto-reconnect, the clock
+features, and debug logging — plus the **critical `serialx` dependency fix**
+without which the integration cannot load on current Home Assistant cores.
+
 ### Added
 
 - **Debug visibility into the serial link.** With debug logging on, the reader now logs every inbound line (`rx: ...`) — including spontaneous push events that parse cleanly, which previously produced no log output at all — and the coordinator logs the decoded form of each event (`switch event: idx=… button=… action=…`, `load event: …`, `scene event: …`). Together with the existing `send:`/`recv:` command logs, this makes hardware testing observable: you can watch exactly what the bridge emits when you press a physical keypad and confirm the reported index, which is especially useful for verifying the experimental Elegance switch mapping. See the README "Watching the logs" section for how to enable it.
