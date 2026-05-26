@@ -128,6 +128,14 @@ def _collect_buttons(
     A button (``<Button>`` with a 0-based ``<ID>``) is "configured" if any of
     its tap/press-and-hold/double-tap actions has a non-zero ``<BtnAction>``.
     Only IDs 0-2 are kept — the protocol addresses buttons 1-3 — mapped ID+1.
+
+    The button is keyed by ``device_idx`` — the **parent** ``<Device>``'s
+    ``<DeviceID>`` (the load) — NOT the per-``<Button>`` inner ``<DeviceID>``,
+    which is a different number (e.g. a parent load 29 has buttons whose inner
+    DeviceID is 22). Hardware confirms the protocol addresses a keypad button by
+    the parent device id: pressing a button on load 55 emits ``ACT05501T``
+    (device 055, button 1) and ``DEV05500`` (load 055). So do NOT switch this to
+    the inner ``<DeviceID>``.
     """
     button_list = dev.find("buttonList")
     if button_list is None:

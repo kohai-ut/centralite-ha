@@ -84,6 +84,25 @@ def test_buttons_parsed_and_mapped():
     assert cfg.buttons[(5, 1)] == "Den Button 1"
 
 
+def test_button_keyed_by_parent_device_not_inner_button_deviceid():
+    """A keypad button is addressed by the PARENT device's DeviceID (the load),
+    not the inner per-<Button> <DeviceID> — which is a different number in real
+    exports (parent 29 with inner 22). Hardware confirms the protocol uses the
+    parent (pressing load 55's button emits ACT05501). Guards against a
+    regression that keys off the inner id."""
+    device = """\
+    <Device>
+      <DeviceID>29</DeviceID><Name>Apt Kitchen</Name>
+      <SendThirdParty>true</SendThirdParty><Active>true</Active>
+      <buttonList>
+        <Button><ID>0</ID><tap><BtnAction>1</BtnAction></tap><DeviceID>22</DeviceID></Button>
+      </buttonList>
+    </Device>"""
+    cfg = parse_jts(_doc(devices=device))
+    assert set(cfg.buttons) == {(29, 1)}  # parent 29, NOT inner 22
+    assert (22, 1) not in cfg.buttons
+
+
 def test_button_action_compared_numerically():
     """BtnAction '00' / ' 0 ' are numerically zero -> not configured."""
     device = """\
