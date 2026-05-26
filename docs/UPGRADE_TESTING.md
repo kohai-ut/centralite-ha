@@ -91,9 +91,13 @@ remove the v1 code *without* losing those entities:
 3. **Restart Home Assistant.** With the v1 code and YAML gone, its entities now
    sit orphaned in the registry (any v1 config entry shows "integration not
    found") — which is what migration consumes.
-4. **Install v2** via HACS (add this repo as a custom repository → install). It
-   lands in the now-clean `custom_components/centralite`. Restart Home Assistant
-   again so the new integration is available.
+4. **Install v2 via HACS** as a custom repository:
+   1. HACS → the ⋮ menu (top-right) → **Custom repositories**.
+   2. **Repository:** `https://github.com/kohai-ut/centralite-ha`
+   3. **Type:** `Integration` (it installs to `custom_components/`).
+   4. **Add**, close the dialog, then open the new *Centralite* entry in HACS →
+      **Download**. It lands in the now-clean `custom_components/centralite`.
+   5. **Restart Home Assistant** so the new integration is registered.
 5. **Settings → Devices & Services → Add Integration → Centralite.** Choose the
    system type and the serial port; optionally paste your `.elg`/`.jts` for
    friendly names. On load, v2 renames the orphaned `elegance.*` /
