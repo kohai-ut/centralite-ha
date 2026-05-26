@@ -96,7 +96,9 @@ remove the v1 code *without* losing those entities:
    2. **Repository:** `https://github.com/kohai-ut/centralite-ha`
    3. **Type:** `Integration` (it installs to `custom_components/`).
    4. **Add**, close the dialog, then open the new *Centralite* entry in HACS →
-      **Download**. It lands in the now-clean `custom_components/centralite`.
+      **Download**. **Use `v2.0.0a3` or later** — earlier alphas have migration
+      bugs, and `a2` can't even load on current HA cores. It lands in the
+      now-clean `custom_components/centralite`.
    5. **Restart Home Assistant** so the new integration is registered.
 5. **Settings → Devices & Services → Add Integration → Centralite.** Choose the
    system type and the serial port; optionally paste your `.elg`/`.jts` for
@@ -113,19 +115,41 @@ remove the v1 code *without* losing those entities:
    > loaded: 500"*, that's different — check the log for a `serialx` dependency
    > conflict and ensure you're on a build with `serialx>=1.7.3` in the
    > manifest.)
-6. **Verify:**
-   - **Settings → Repairs** → the migration issue lists every rename and the
-     removed `scene*OFF` entries. The count should match your entity count.
-   - **`entity_id`s are preserved** (migration changes the `unique_id`, not the
-     `entity_id`), so automations/dashboards keep resolving. The *only* real
-     break is anything that referenced a removed scene `*OFF` entity — fix
-     those.
-   - Spot-check that your noted area / icon / alias survived.
-   - **Hardware:** toggle a few real loads from HA; press a physical keypad and
-     confirm the entity updates (push) and a device trigger fires; activate a
-     scene. Then enable the **Sync bridge clock on connect** option (Configure),
-     reload, and confirm the bridge clock was set (or press the **Sync Clock**
-     button).
+6. **Verify the migration *adopted*, didn't *duplicate*.** This is the heart of
+   the test — repeat it per bridge (Elegance and JetStream each get their own
+   entry and their own migration):
+   - **Settings → Repairs** → open the migration issue. It lists every renamed
+     load/switch/button and every removed scene; the renamed count should be in
+     the ballpark of your v1 entity count.
+   - **Lights, switches, and buttons keep their `entity_id`** (`light.l001`,
+     `switch.sw044`, `switch.jssw01401`, …) plus their area/icon/alias — they're
+     the *same* entities, adopted in place. On the device page they should be
+     **available**, not a fresh duplicate set with brand-new ids.
+   - **Orphan sanity check:** Developer Tools → States, look for old Centralite
+     entities stuck **`unavailable`**. On a current build there should be none
+     (except scenes, below). A full shadow set of unavailable `light.*`/`switch.*`
+     means the migration didn't adopt — confirm you're on **`v2.0.0a3`+** (older
+     alphas orphaned JetStream entities and mis-mapped Elegance switch indices).
+   - **Scenes change identity (expected).** A v1 scene is a `scene.*` entity; a
+     v2 scene is a **`switch.`** entity. The migration *deletes* the old
+     `scene.*` rows and v2 creates new scene-switches with new ids. So HA's
+     "Scenes" panel is empty (correct), scene control lives under `switch.*`, and
+     **automations using `scene.turn_on(scene.x)` must move to `switch.turn_on`**
+     on the new entity. A scene's area/icon customization does not carry across
+     the domain change.
+   - **Elegance keypad switches** map to the global index
+     `(letter-'A')*24 + number` (input tab A–F/A–P × 24 buttons). If a switch
+     entity doesn't match the physical button you expect, you're on a pre-a3
+     build.
+   - **Hardware (what the test suite can't check):** toggle a few real loads and
+     confirm the right fixtures respond; activate a scene-switch; press a
+     physical keypad and confirm the entity updates (requires the per-load/
+     per-device "send third-party output" flag set in the programming software)
+     and that a device trigger fires. Keep **debug logging** on and watch the
+     `rx:` / `switch event:` / `load event:` lines (README → "Watching the
+     logs") — that's how you confirm which index a physical button reports.
+   - Optionally enable **Sync bridge clock on connect** (Elegance → Configure)
+     and confirm the panel clock is set, or press the **Sync Clock** button.
 7. Delete any now-empty v1 config entries (their entities have moved to v2). A
    YAML-configured v1 has none, so skip this.
 
@@ -147,3 +171,11 @@ registry, and HACS in one shot.
 > renames make an in-place downgrade to v1 impossible (v1 would no longer
 > recognize its own entities), so don't attempt one — restore the backup
 > instead.
+
+## Re-migrating after a failed earlier attempt
+
+If you migrated on an older alpha and hit orphaned/duplicate entities (e.g.
+unavailable `light.*`/`switch.*` shadowing a working set, or Elegance switches at
+the wrong index): **restore the `pre-centralite-v2` backup**, update HACS to
+**`v2.0.0a3`+**, and re-run Phase 1 from the top. The migration is idempotent and
+runs fresh against the restored v1 registry, so the second pass adopts cleanly.
