@@ -161,6 +161,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.async_set_updated_data(self.data)
 
     def _on_load_event(self, event: LoadEvent) -> None:
+        _LOGGER.debug("load event: idx=%s level=%s", event.idx, event.level)
         cur = self.data["loads"].get(event.idx, {})
         cur["level"] = event.level
         cur["on"] = event.level > 0
@@ -168,6 +169,12 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_set_updated_data(self.data)
 
     def _on_switch_event(self, event: SwitchEvent) -> None:
+        _LOGGER.debug(
+            "switch event: idx=%s button=%s action=%s",
+            event.idx,
+            event.button,
+            event.action,
+        )
         key = (event.idx, event.button)
         # Press / tap -> on, release -> off. Tap is momentary; we leave it on
         # until the next event clears it.
@@ -210,6 +217,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return device.id if device else None
 
     def _on_scene_event(self, event: SceneEvent) -> None:
+        _LOGGER.debug("scene event: idx=%s active=%s", event.idx, event.active)
         self.data["scenes"][event.idx] = event.active
         self.async_set_updated_data(self.data)
 

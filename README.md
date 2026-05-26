@@ -118,6 +118,25 @@ For a safe, step-by-step upgrade procedure on a single production instance (full
 - **Lights show wrong initial state** — the bridge may not have the "spontaneous output" flag set per load. Enable it in the Elegance Programming Software, OR rely on the safety-net poll.
 - **Entities missing after upgrade from v1** — check Settings → Repairs for the migration log. If entities are still missing, file a bug with your `core.entity_registry` JSON (with secrets redacted).
 
+### Watching the logs (debug logging)
+
+For hardware testing — verifying a physical keypad's index, watching push events, or diagnosing a connection — turn on debug logging:
+
+- **From the UI (easiest):** Settings → Devices & Services → Centralite → the three-dot menu → **Enable debug logging**. Reproduce the behavior (press the switch, toggle the load), then **Disable debug logging** to download a log file scoped to this integration.
+- **From `configuration.yaml`** (persists across restarts):
+  ```yaml
+  logger:
+    default: info
+    logs:
+      custom_components.centralite: debug
+  ```
+
+What you'll see at debug level:
+
+- `rx: 'P044'` / `rx: 'ACT044...'` — **every raw line the bridge emits**, including spontaneous events from physical button presses and load changes. This is the ground truth for what the hardware is actually sending.
+- `send:` / `sendrecv:` / `recv:` — commands HA sends and their responses.
+- `switch event: idx=44 button=1 action=tap` / `load event:` / `scene event:` — the **decoded** interpretation of each push event. Compare the `idx` here against the physical device you operated to confirm the mapping (handy for the experimental Elegance switch import).
+
 ## Development
 
 Protocol reference docs are in [`docs/protocols/`](docs/protocols/) — manufacturer PDFs for both Elegance and JetStream, preserved here since CentraLite is no longer in business.
