@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Fixed
 
+- **`serialx` requirement no longer hard-pins `==1.8.0`.** Current Home Assistant cores bundle `serialx==1.7.3`, and a hard `==1.8.0` pin made the dependency unsolvable on those installs — the requirements step failed and the config flow returned a 500 ("Config flow could not be loaded"). Relaxed to `serialx>=1.7.3`; the integration only uses `open_serial_connection`, which is unchanged across those versions.
 - **Device triggers now enumerate for every device's buttons.** They previously listed only from the configured button list, which a `.jts` import never populates — so JetStream users got zero triggers and buttons 2/3 were unreachable. Now each known device offers buttons 1-3 (the protocol's range), so any physical press is trigger-able.
 - **Mid-scan disconnect during the `^N` scan surfaces as `scan_failed`** instead of escaping the config flow as an unhandled error; the scan's open-failure path also cleans up a partial connection.
 - **Bridge device id is looked up fresh per button event** rather than cached, so a deleted-and-recreated device can't leave triggers pointing at a dead id.
