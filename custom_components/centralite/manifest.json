@@ -1,12 +1,16 @@
 {
   "domain": "centralite",
   "name": "Centralite Lighting",
-  "codeowners": ["@kohai-ut"],
+  "codeowners": [
+    "@kohai-ut"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/kohai-ut/centralite-ha",
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/kohai-ut/centralite-ha/issues",
-  "requirements": ["serialx>=1.7.3"],
-  "version": "2.0.0a2"
+  "requirements": [
+    "serialx>=1.7.3"
+  ],
+  "version": "2.0.0a3"
 }
