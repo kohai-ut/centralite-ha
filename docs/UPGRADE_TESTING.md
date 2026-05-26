@@ -62,13 +62,31 @@ without losing those entities:
      `centralite_jetstream` downloads in HACS.
 
    Either way, **leave the v1 config entries in Devices & Services untouched.**
+
+   **If your v1 was YAML-configured**, also remove its `configuration.yaml`
+   entries now — v2 is **UI-only and has no YAML configuration**:
+   - Delete the `centralite:` and/or `centralite-jetstream:` blocks (the ones
+     with a `port:`). This matters most for `centralite:` — v2 reuses the
+     `centralite` domain but is config-entry-only, so a leftover `centralite:`
+     key throws *"The centralite integration does not support YAML
+     configuration"* at startup.
+   - In your `logger:` block, drop any v1 lines
+     (`custom_components.centralite-jetstream.*`) and the redundant per-platform
+     lines; a single `custom_components.centralite: debug` covers all of v2
+     (children like `…protocol._base` and `…coordinator` inherit it).
+   - Check your `!include` files for stray v1 platform entries:
+     `grep -rn "platform: centralite" /config/*.yaml` — remove any you find.
+
    Restart Home Assistant. The v1 entries now show "integration not found" and
    their entities orphan in the registry — which is what migration consumes.
 3. **Settings → Devices & Services → Add Integration → Centralite.** Choose the
    system type and the serial port; optionally paste your `.elg`/`.jts` for
    friendly names. On load, v2 renames the orphaned `elegance.*` /
    `jetstream.*` unique_ids to the v2 scheme and adopts them. The port is free
-   because v1 isn't loaded.
+   because v1 isn't loaded. **v2 is configured entirely here — no YAML.** If you
+   run more than one bridge (e.g. an Elegance *and* a JetStream), add the
+   integration once per bridge, as separate config entries pointing at each
+   port.
 4. **Verify:**
    - **Settings → Repairs** → the migration issue lists every rename and the
      removed `scene*OFF` entries. The count should match your entity count.
