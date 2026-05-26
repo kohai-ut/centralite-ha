@@ -4,9 +4,9 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
-## [2.0.0a3] - 2026-05-25
+## [2.0.0] - 2026-05-26
 
-Migration-hardening release driven by a live v1→v2 upgrade test on real Elegance and JetStream hardware, plus the Elegance keypad switch-index correction. Anyone who migrated with `2.0.0a2` should re-migrate on this build (restore your pre-upgrade backup first).
+First stable release of the v2 rewrite. Consolidates the `2.0.0a1`–`a3` alpha series, with the full v1→v2 migration path validated end-to-end against real Elegance and JetStream hardware. The fixes below were hardened by a live upgrade test; anyone still on a pre-release alpha should restore their pre-upgrade backup and re-migrate on `2.0.0`.
 
 ### Fixed
 

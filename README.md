@@ -2,11 +2,12 @@
 
 A modern Home Assistant custom integration for **Centralite Elegance** and **Centralite JetStream** lighting systems. Communicates with the bridge over RS-232.
 
-> [!WARNING]
-> **Status: v2.0.0 alpha.** This is the first release of a greenfield rewrite of the legacy
-> v1 integrations ([centralite_elegance](https://github.com/kohai-ut/centralite_elegance),
+> [!NOTE]
+> **Status: v2.0.0 (stable).** A greenfield rewrite of the legacy v1 integrations
+> ([centralite_elegance](https://github.com/kohai-ut/centralite_elegance),
 > [centralite_jetstream](https://github.com/kohai-ut/centralite_jetstream), both archived at
-> `v1.0.1`). Expect rough edges, but this version is already better.
+> `v1.0.1`), validated end-to-end against real Elegance and JetStream hardware. Considerably
+> more capable than v1; see [Known limitations](#known-limitations) for what isn't covered yet.
 
 ## What this is
 
@@ -62,8 +63,6 @@ Until v2 ships to the HACS default repository:
 ### Staying up to date
 
 HACS manages updates: when a new version is published, it shows an **Update** badge on the Centralite entry — open it, click **Update**, and **restart Home Assistant**. Your configuration and entities are preserved across updates.
-
-While v2 is in **alpha**, releases are published as GitHub *pre-releases*, which HACS hides by default. Turn them on once so you actually get the update notifications: in HACS open the **Centralite Lighting** entry → ⋮ → **Redownload**, enable **Show beta versions**, and pick the newest. After that, each new alpha shows up as a normal update. (Once v2 reaches a stable release, the beta toggle is no longer needed.)
 
 ## Configuration
 
@@ -129,7 +128,7 @@ Do this in one maintenance window. The bridge's serial port can only be held by 
 
 3. **Restart Home Assistant.** Your v1 entities are now orphaned in the registry (any v1 config entry shows "integration not found").
 
-4. **Install v2 via HACS** as a custom repository (see [Installation](#installation-hacs-custom-repository) above) — select **v2.0.0a3 or later** — then **restart**.
+4. **Install v2 via HACS** as a custom repository (see [Installation](#installation-hacs-custom-repository) above), then **restart**.
 
 5. **Settings → Devices & Services → Add Integration → Centralite.** Pick the system type and serial port, and optionally paste your `.elg`/`.jts` for friendly names. On load, v2 renames the orphaned unique_ids to its scheme and adopts them. **Add it once per bridge** if you run both an Elegance and a JetStream.
 

@@ -94,9 +94,8 @@ remove the v1 code *without* losing those entities:
    2. **Repository:** `https://github.com/kohai-ut/centralite-ha`
    3. **Type:** `Integration` (it installs to `custom_components/`).
    4. **Add**, close the dialog, then open the new *Centralite* entry in HACS →
-      **Download**. **Use `v2.0.0a3` or later** — earlier alphas have migration
-      bugs, and `a2` can't even load on current HA cores. It lands in the
-      now-clean `custom_components/centralite`.
+      **Download** (use **`v2.0.0` or later**). It lands in the now-clean
+      `custom_components/centralite`.
    5. **Restart Home Assistant** so the new integration is registered.
 5. **Settings → Devices & Services → Add Integration → Centralite.** Choose the
    system type and the serial port; optionally paste your `.elg`/`.jts` for
@@ -126,8 +125,9 @@ remove the v1 code *without* losing those entities:
    - **Orphan sanity check:** Developer Tools → States, look for old Centralite
      entities stuck **`unavailable`**. On a current build there should be none
      (except scenes, below). A full shadow set of unavailable `light.*`/`switch.*`
-     means the migration didn't adopt — confirm you're on **`v2.0.0a3`+** (older
-     alphas orphaned JetStream entities and mis-mapped Elegance switch indices).
+     means the migration didn't adopt — confirm you're on **`v2.0.0`+** (the
+     pre-release alphas orphaned JetStream entities and mis-mapped Elegance switch
+     indices).
    - **Scenes change identity (expected).** A v1 scene is a `scene.*` entity; a
      v2 scene is a **`switch.`** entity. The migration *deletes* the old
      `scene.*` rows and v2 creates new scene-switches with new ids. So HA's
@@ -137,7 +137,7 @@ remove the v1 code *without* losing those entities:
      the domain change.
    - **Elegance keypad switches** map to the global index
      `(letter-'A')*24 + number` (input tab A–F/A–P × 24 buttons). If a switch
-     entity doesn't match the physical button you expect, you're on a pre-a3
+     entity doesn't match the physical button you expect, you're on a pre-`2.0.0`
      build.
    - **Hardware (what the test suite can't check):** toggle a few real loads and
      confirm the right fixtures respond; activate a scene-switch; press a
@@ -172,8 +172,8 @@ registry, and HACS in one shot.
 
 ## Re-migrating after a failed earlier attempt
 
-If you migrated on an older alpha and hit orphaned/duplicate entities (e.g.
+If you migrated on a pre-release alpha and hit orphaned/duplicate entities (e.g.
 unavailable `light.*`/`switch.*` shadowing a working set, or Elegance switches at
 the wrong index): **restore the `pre-centralite-v2` backup**, update HACS to
-**`v2.0.0a3`+**, and re-run Phase 1 from the top. The migration is idempotent and
+**`v2.0.0`+**, and re-run Phase 1 from the top. The migration is idempotent and
 runs fresh against the restored v1 registry, so the second pass adopts cleanly.
