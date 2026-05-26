@@ -72,9 +72,7 @@ remove the v1 code *without* losing those entities:
    tar tzf centralite-v1-$(date +%F).tar.gz | head     # verify before deleting
    rm -rf custom_components/centralite custom_components/centralite-jetstream
    ```
-   (Installed v1 via HACS instead? Uninstall the downloads in HACS. File Editor
-   or Samba work in place of the shell.) **Leave any v1 config entries in
-   Devices & Services untouched.**
+   **Leave any v1 config entries in Devices & Services untouched.**
 2. **Remove the v1 YAML configuration** (v2 is **UI-only and has no YAML
    configuration**):
    - Delete the `centralite:` and/or `centralite-jetstream:` blocks (the ones
