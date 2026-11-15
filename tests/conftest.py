@@ -10,9 +10,11 @@ with `PYTHONPATH=. python tests/test_*.py`.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
-from custom_components.centralite.protocol import CentraliteProtocol
+from custom_components.centralite.protocol import CentraliteProtocol, LoadEvent
 from custom_components.centralite.protocol.common import ProtocolError
 
 
@@ -39,11 +41,24 @@ class FakeProtocol(CentraliteProtocol):
         supports_clock: bool = False,
         bulk_loads: dict[int, bool] | None = None,
         connect_error: Exception | None = None,
+        supports_per_load: bool = False,
+        load_levels: dict[int, int] | None = None,
     ) -> None:
         self._bulk = supports_bulk
         self._scene_push = supports_scene_push
         self._clock = supports_clock
         self._bulk_loads = bulk_loads or {}
+        # Per-load query (JetStream ^F) simulation. `load_levels` maps a load
+        # to the level its DEV reply reports; a load missing from the map is
+        # silent (times out). `silent_once` loads are silent on the first ask
+        # only. `query_gate`, when set to an unset Event, holds every query
+        # in flight so a test can observe the refresh mid-run.
+        self._per_load = supports_per_load
+        self.load_levels: dict[int, int] = dict(load_levels or {})
+        self.silent_once: set[int] = set()
+        self.load_queries: list[int] = []
+        self.query_timeouts: list[float | None] = []
+        self.query_gate: asyncio.Event | None = None
         # Mutable so tests can toggle it between reconnect attempts.
         self.connect_error = connect_error
         self.connect_count = 0
@@ -72,8 +87,24 @@ class FakeProtocol(CentraliteProtocol):
     async def set_load_level(self, idx: int, level: int, rate: int = 0) -> None:
         self.calls.append(("set_load_level", idx, level, rate))
 
-    async def get_load_level(self, idx: int) -> int:
-        return 0
+    async def get_load_level(self, idx: int, *, timeout: float | None = None) -> int:
+        if not self._per_load:
+            return 0
+        self.load_queries.append(idx)
+        self.query_timeouts.append(timeout)
+        if self.query_gate is not None:
+            await self.query_gate.wait()
+        if idx in self.silent_once:
+            self.silent_once.discard(idx)
+            raise ProtocolError(f"Timeout waiting for response to '^F{idx:03d}'")
+        if idx not in self.load_levels:
+            raise ProtocolError(f"Timeout waiting for response to '^F{idx:03d}'")
+        level = self.load_levels[idx]
+        # The real protocol delivers the DEV reply through the load callback
+        # as well as returning it; the coordinator relies on the callback.
+        if self.load_cb is not None:
+            self.load_cb(LoadEvent(idx=idx, level=level))
+        return level
 
     async def get_all_load_states(self) -> dict[int, bool]:
         if not self._bulk:
@@ -124,6 +155,10 @@ class FakeProtocol(CentraliteProtocol):
     @property
     def supports_bulk_query(self) -> bool:
         return self._bulk
+
+    @property
+    def supports_per_load_query(self) -> bool:
+        return self._per_load
 
     @property
     def supports_clock(self) -> bool:

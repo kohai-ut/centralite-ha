@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- **JetStream light levels are now read after startup and reconnect** ([#35](https://github.com/kohai-ut/centralite-ha/issues/35), suggested and first tested by @pgyrogear). JetStream has no bulk-state command, so Home Assistant used to show a light as off after a restart until someone operated it. The integration now asks each configured load for its level with `^F` and applies the replies through the normal push-event path, so on/off state and brightness are both corrected.
+  - It runs as a background task: Home Assistant startup and bridge reconnect never wait for it, and entities are available immediately.
+  - Each query waits up to 2 seconds. A device that doesn't answer (for example a keypad that controls no load) is skipped and re-asked once at the end. If the first 5 queries all go unanswered the refresh stops, and a whole refresh is capped at 5 minutes.
+  - One summary line is logged at info level; per-device misses are debug only.
+  - Elegance is unchanged (it already reads every load at once with `^G`).
+
 ### Changed
 
 - **JetStream `.jts` import now reports duplicate Device IDs instead of silently dropping a device.** When two usable devices in the file share a Device ID, setup still completes and one is imported (a named device before an unnamed one, otherwise the first in the file; previously the last one won with no message). A notice under Settings → Repairs lists each duplicated ID and both device names. Existing installs are not affected; this only applies when a `.jts` is imported.

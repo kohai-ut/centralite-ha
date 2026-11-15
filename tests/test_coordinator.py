@@ -11,6 +11,8 @@ These exercise the push-primary state machine that has no standalone coverage:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import timedelta
 
 from homeassistant.util import dt as dt_util
@@ -19,15 +21,19 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
+from custom_components.centralite import coordinator as coordinator_module
 from custom_components.centralite.const import (
+    CONF_LOAD_IDS,
     CONF_SYSTEM_TYPE,
     DOMAIN,
     OPT_POLL_INTERVAL,
     OPT_SYNC_CLOCK_ON_CONNECT,
     SYSTEM_ELEGANCE,
+    SYSTEM_JETSTREAM,
 )
 from custom_components.centralite.coordinator import CentraliteCoordinator
 from custom_components.centralite.protocol import LoadEvent, SceneEvent, SwitchEvent
+from custom_components.centralite.protocol.jetstream import JetStreamProtocol
 
 from .conftest import FakeProtocol
 
@@ -354,3 +360,309 @@ async def test_safety_poll_not_scheduled_when_shutting_down(hass):
     coord._shutting_down = True
     coord._schedule_safety_poll()  # e.g. a poll finishing after shutdown began
     assert coord._poll_unsub is None
+
+
+# --- Per-load background refresh (JetStream ^F, issue #35) ---
+#
+#   connect ──> _start_load_refresh ──> background task ──> get_load_level(idx)
+#                   (never awaited)                              │ DEV reply
+#                                                                ▼
+#                                           _on_load_event ──> coordinator.data
+#
+# The hard requirement: setup and reconnect must never wait on the refresh.
+
+
+def _js_entry(hass, load_ids):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_SYSTEM_TYPE: SYSTEM_JETSTREAM,
+            "port": "/dev/ttyUSB0",
+            "baud": 19200,
+            CONF_LOAD_IDS: load_ids,
+        },
+        title="JetStream Bridge",
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+def _js_proto(load_levels):
+    """A JetStream-shaped fake: no bulk query, one-load-at-a-time level reads."""
+    return FakeProtocol(
+        supports_bulk=False,
+        supports_scene_push=True,
+        supports_per_load=True,
+        load_levels=load_levels,
+    )
+
+
+async def _drain(hass) -> None:
+    """Let the background refresh run to completion."""
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+async def _until(predicate) -> None:
+    """Yield to the loop until `predicate` holds (the task has reached a point)."""
+    for _ in range(200):
+        if predicate():
+            return
+        await asyncio.sleep(0)
+    raise AssertionError("condition not reached")
+
+
+async def test_load_refresh_does_not_block_init(hass):
+    """async_init must return while every level query is still outstanding."""
+    proto = _js_proto({1: 55, 2: 0})
+    proto.query_gate = asyncio.Event()  # hold every query in flight
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2]), proto)
+
+    await coord.async_init()  # returns even though no query can complete
+
+    assert coord.data["loads"] == {}
+    assert coord._load_refresh_task is not None
+    assert not coord._load_refresh_task.done()
+
+    proto.query_gate.set()
+    await _drain(hass)
+    assert coord.data["loads"][1] == {"level": 55, "on": True}
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_reads_each_configured_load(hass):
+    proto = _js_proto({1: 55, 2: 0, 3: 99})
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2, 3]), proto)
+    await coord.async_init()
+    await _drain(hass)
+
+    assert proto.load_queries == [1, 2, 3]
+    assert coord.data["loads"][1] == {"level": 55, "on": True}
+    assert coord.data["loads"][2] == {"level": 0, "on": False}
+    assert coord.data["loads"][3] == {"level": 99, "on": True}
+    # Every query is bounded by the refresh timeout, not left to a default.
+    assert set(proto.query_timeouts) == {coordinator_module.LOAD_REFRESH_TIMEOUT}
+    assert coord._load_refresh_task is None  # finished tasks are released
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_skips_silent_load_and_retries_it_once(hass):
+    """A device that never answers (a keypad with no load, say) must not
+    end the refresh: later loads are still read, and it is re-asked once."""
+    proto = _js_proto({1: 10, 3: 30})  # load 2 is silent
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2, 3]), proto)
+    await coord.async_init()
+    await _drain(hass)
+
+    assert proto.load_queries == [1, 2, 3, 2]  # first pass, then one retry of 2
+    assert coord.data["loads"][1] == {"level": 10, "on": True}
+    assert coord.data["loads"][3] == {"level": 30, "on": True}
+    assert 2 not in coord.data["loads"]
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_retry_pass_recovers_a_dropped_reply(hass):
+    """A load silent on the first pass but answering on the retry ends up right."""
+    proto = _js_proto({1: 10, 2: 20, 3: 30})
+    proto.silent_once = {2}
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2, 3]), proto)
+    await coord.async_init()
+    await _drain(hass)
+
+    assert proto.load_queries == [1, 2, 3, 2]
+    assert coord.data["loads"][2] == {"level": 20, "on": True}
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_stops_when_bridge_never_answers(hass):
+    """If the first few queries all go unanswered the bridge isn't replying:
+    stop rather than time out on every remaining load (and don't retry)."""
+    probe = coordinator_module.LOAD_REFRESH_PROBE_COUNT
+    load_ids = list(range(1, probe + 4))
+    proto = _js_proto({probe + 2: 50})  # would answer, but is past the probe
+    coord = CentraliteCoordinator(hass, _js_entry(hass, load_ids), proto)
+    await coord.async_init()
+    await _drain(hass)
+
+    assert proto.load_queries == load_ids[:probe]
+    assert coord.data["loads"] == {}
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_stops_at_time_budget(hass, monkeypatch):
+    monkeypatch.setattr(coordinator_module, "LOAD_REFRESH_BUDGET", 0)
+    proto = _js_proto({1: 55, 2: 66})
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2]), proto)
+    await coord.async_init()
+    await _drain(hass)
+
+    assert proto.load_queries == []  # budget already spent: nothing asked
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_stops_when_link_drops(hass):
+    proto = _js_proto({1: 55, 2: 66})
+    proto.query_gate = asyncio.Event()
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2]), proto)
+    await coord.async_init()
+    await _until(lambda: proto.load_queries == [1])
+
+    proto.connected = False  # link gone, before any disconnect callback
+    proto.query_gate.set()
+    await _drain(hass)
+
+    assert proto.load_queries == [1]  # load 2 never asked on a dead link
+    await coord.async_shutdown()
+
+
+async def test_shutdown_cancels_load_refresh(hass):
+    proto = _js_proto({1: 55, 2: 66})
+    proto.query_gate = asyncio.Event()
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2]), proto)
+    await coord.async_init()
+    await _until(lambda: proto.load_queries == [1])
+    task = coord._load_refresh_task
+
+    await coord.async_shutdown()
+    proto.query_gate.set()
+    await _drain(hass)
+
+    assert task.cancelled()
+    assert coord._load_refresh_task is None
+    assert proto.load_queries == [1]  # nothing asked after shutdown
+
+
+async def test_disconnect_cancels_load_refresh(hass):
+    proto = _js_proto({1: 55, 2: 66})
+    proto.query_gate = asyncio.Event()
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2]), proto)
+    await coord.async_init()
+    await _until(lambda: proto.load_queries == [1])
+    task = coord._load_refresh_task
+
+    proto.disconnect_cb(OSError("cable pulled"))
+    proto.query_gate.set()
+    await _drain(hass)
+
+    assert task.cancelled()
+    assert proto.load_queries == [1]
+    await coord.async_shutdown()
+
+
+async def test_reconnect_restores_availability_before_load_refresh(hass):
+    """Reconnect must not hold entities unavailable while levels are re-read."""
+    proto = _js_proto({1: 55})
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1]), proto)
+    await coord.async_init()
+    await _drain(hass)
+    assert coord.data["loads"][1] == {"level": 55, "on": True}
+
+    proto.load_levels[1] = 0  # the light was switched off while disconnected
+    proto.query_gate = asyncio.Event()  # the re-read cannot complete yet
+    proto.disconnect_cb(OSError("cable pulled"))
+    assert coord.last_update_success is False
+    await _advance(hass)  # reconnect timer fires
+
+    assert coord.last_update_success is True  # available again already
+    assert coord._load_refresh_task is not None
+    assert not coord._load_refresh_task.done()  # refresh still outstanding
+
+    proto.query_gate.set()
+    await _drain(hass)
+    assert coord.data["loads"][1] == {"level": 0, "on": False}
+    await coord.async_shutdown()
+
+
+async def test_only_one_load_refresh_runs_at_a_time(hass):
+    proto = _js_proto({1: 55})
+    proto.query_gate = asyncio.Event()
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1]), proto)
+    await coord.async_init()
+    first = coord._load_refresh_task
+
+    coord._start_load_refresh()  # e.g. a reconnect landing mid-refresh
+    second = coord._load_refresh_task
+    proto.query_gate.set()
+    await _drain(hass)
+
+    assert first is not second
+    assert first.cancelled()
+    assert second.done() and not second.cancelled()
+    await coord.async_shutdown()
+
+
+async def test_no_load_refresh_for_bulk_query_bridge(hass):
+    """Elegance primes from ^G; it must never be queried load by load."""
+    proto = FakeProtocol(
+        supports_bulk=True, bulk_loads={1: True}, load_levels={1: 55}
+    )
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1]), proto)
+    await coord.async_init()
+    await _drain(hass)
+
+    assert coord._load_refresh_task is None
+    assert proto.load_queries == []
+    assert coord.data["loads"][1] == {"on": True, "level": 99}  # from bulk prime
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_logs_one_summary_and_no_warnings(hass, caplog):
+    """Silent devices are routine: no per-load warning or traceback, just a
+    single summary line."""
+    proto = _js_proto({1: 10, 3: 30})  # load 2 is silent
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2, 3]), proto)
+    with caplog.at_level(
+        logging.DEBUG, logger="custom_components.centralite.coordinator"
+    ):
+        await coord.async_init()
+        await _drain(hass)
+
+    ours = [
+        r for r in caplog.records
+        if r.name == "custom_components.centralite.coordinator"
+    ]
+    assert not [r for r in ours if r.levelno >= logging.WARNING]
+    assert not [r for r in ours if r.exc_info]
+    summaries = [r for r in ours if r.levelno == logging.INFO]
+    assert len(summaries) == 1
+    assert "2 of 3" in summaries[0].getMessage()
+    await coord.async_shutdown()
+
+
+async def test_load_refresh_end_to_end_with_real_jetstream_protocol(hass, monkeypatch):
+    """The real protocol, not the fake: ^F goes out on the wire and the DEV
+    reply reaches coordinator state through the normal push-event path."""
+    monkeypatch.setattr(coordinator_module, "LOAD_REFRESH_TIMEOUT", 0.05)
+    reader = asyncio.StreamReader()
+    levels = {1: 42, 3: 0}  # device 2 never answers
+    sent: list[str] = []
+
+    class _Bridge:
+        """Answers ^Fddd with DEVdddll + CRLF, as the hardware does."""
+
+        def write(self, data: bytes) -> None:
+            command = data.decode("ascii")
+            sent.append(command)
+            idx = int(command[2:5])
+            if command.startswith("^F") and idx in levels:
+                reply = f"DEV{idx:03d}{levels[idx]:02d}".encode("ascii")
+                reader.feed_data(reply + bytes((13, 10)))  # CR LF
+
+        async def drain(self) -> None: ...
+        def close(self) -> None: ...
+        async def wait_closed(self) -> None: ...
+
+    async def factory(url, baudrate):
+        return reader, _Bridge()
+
+    proto = JetStreamProtocol(
+        "test://", transport_factory=factory, inter_command_delay=0
+    )
+    coord = CentraliteCoordinator(hass, _js_entry(hass, [1, 2, 3]), proto)
+    await coord.async_init()
+    await _drain(hass)
+
+    assert sent == ["^F001", "^F002", "^F003", "^F002"]
+    assert coord.data["loads"][1] == {"level": 42, "on": True}
+    assert coord.data["loads"][3] == {"level": 0, "on": False}
+    assert 2 not in coord.data["loads"]
+    await coord.async_shutdown()
