@@ -15,6 +15,11 @@ Only devices exposed to third-party control (<SendThirdParty>true) and active
 over RS-232, so creating entities for them would just yield perpetually-unknown
 state. Configured keypad buttons in each <buttonList> are parsed too (as button
 switch entities); physical presses also drive device triggers (device_trigger).
+
+A <DeviceID> is the device's address on the RS-232 protocol, so it can only map
+to one entity. If several usable records share an ID, one is kept (a named
+record before an unnamed one, otherwise the first in the file) and the clash
+is reported in ``JtsConfig.duplicates`` for the caller to show the user.
 """
 
 from __future__ import annotations
@@ -39,6 +44,9 @@ class JtsConfig:
     # where protocol_button is 1-3 (the .jts numbers buttons 0-7 but only 0-2
     # are ever configured / addressable, mapping 0->1, 1->2, 2->3).
     buttons: dict[tuple[int, int], str] = field(default_factory=dict)
+    # Device IDs used by more than one usable record -> the names of all of
+    # them, the kept record first. Empty for a normal file.
+    duplicates: dict[int, tuple[str, ...]] = field(default_factory=dict)
 
 
 def _is_true(value: str | None, *, default: bool = False) -> bool:
@@ -77,9 +85,12 @@ def parse_jts(text: str) -> JtsConfig:
     dimmable: dict[int, bool] = {}
     scenes: dict[int, str] = {}
     buttons: dict[tuple[int, int], str] = {}
+    duplicates: dict[int, tuple[str, ...]] = {}
 
     device_list = root.find("DeviceList")
     if device_list is not None:
+        # Usable records grouped by Device ID, in file order.
+        records: dict[int, list[tuple[str, ET.Element]]] = {}
         for dev in device_list.findall("Device"):
             idx = _as_index(dev.findtext("DeviceID"))
             if idx is None:
@@ -89,6 +100,14 @@ def parse_jts(text: str) -> JtsConfig:
             if not _is_true(dev.findtext("Active"), default=True):
                 continue
             name = (dev.findtext("Name") or "").strip()
+            records.setdefault(idx, []).append((name, dev))
+
+        for idx, group in records.items():
+            if len(group) > 1:
+                # Stable sort: named records first, file order otherwise.
+                group.sort(key=lambda record: not record[0])
+                duplicates[idx] = tuple(name for name, _ in group)
+            name, dev = group[0]
             loads[idx] = name
             dimmable[idx] = _is_true(dev.findtext("Dimmer"), default=True)
             _collect_buttons(dev, idx, name, buttons)
@@ -101,7 +120,13 @@ def parse_jts(text: str) -> JtsConfig:
                 continue
             scenes[idx] = (scene.findtext("Name") or "").strip()
 
-    return JtsConfig(loads=loads, scenes=scenes, dimmable=dimmable, buttons=buttons)
+    return JtsConfig(
+        loads=loads,
+        scenes=scenes,
+        dimmable=dimmable,
+        buttons=buttons,
+        duplicates=duplicates,
+    )
 
 
 def _button_configured(button: ET.Element) -> bool:

@@ -90,7 +90,7 @@ The JetStream bridge sends nothing to Home Assistant until third-party output is
 > [!IMPORTANT]
 > Saving the project does not program the hardware. A setting only takes effect once it has been sent to the device (**Send Device** or **Submit**). Likewise, importing a `.jts` into Home Assistant only tells Home Assistant what exists; it changes nothing on the JetStream system.
 
-The **Send T-Party** checkbox only appears after **Update Third Party** is checked on the bridge. Only devices with **Send T-Party** checked are imported from the `.jts`.
+The **Send T-Party** checkbox only appears after **Update Third Party** is checked on the bridge.
 
 ### 3b. Elegance: prepare the system in the Elegance Programming Software
 
@@ -126,10 +126,26 @@ The config flow has two steps:
 
 You have two options for telling HA which loads/scenes/switches you have and what they're named:
 
-- **Paste your `.elg` (Elegance) or `.jts` (JetStream) config file** — the integration parses your friendly names and the list of configured loads and scenes automatically. Export `.elg` from the Centralite Elegance Programming Software; export `.jts` from JetStream Designer. (For JetStream, only devices with **Send T-Party** checked are imported, since the others can't be observed over RS-232. Configured keypad buttons on those devices are imported as switch entities.)
+- **Paste your `.elg` (Elegance) or `.jts` (JetStream) config file** — the integration parses your friendly names and the list of configured loads and scenes automatically. Export `.elg` from the Centralite Elegance Programming Software; export `.jts` from JetStream Designer.
 - **Or enter comma-separated IDs** for loads, scenes, switches if you don't have an export file. Use the real device IDs from the programming software and keep any gaps: the first five devices are not necessarily 1 to 5. Friendly names can be set per-entity in HA's UI afterwards.
 
 Both paths can be combined. (Using the config file approach is the most tested.)
+
+#### Which JetStream devices are imported
+
+Not every device in your `.jts` becomes an entity. The import skips, without an error:
+
+| Skipped | Why |
+|---|---|
+| Devices with **Send T-Party** unchecked | The bridge never reports their state, so Home Assistant could not show whether they are on. Check the box in JetStream Designer, **Send Device**, export again. |
+| Devices the project file flags as not active (`<Active>false</Active>`) | Designer has them recorded as inactive. |
+| The second device with a Device ID that is already used | A Device ID is the address Home Assistant uses to reach a device through the bridge, so each ID can only be one entity. See below. |
+
+If a light you expected is missing after setup, check these first.
+
+For the devices that are imported, the name and the dimmer setting come from the file, and each configured keypad button (up to three per device) becomes a switch entity.
+
+**Duplicate Device IDs.** If two usable devices in the file share a Device ID, setup still completes. One of them is imported: a named device is preferred over an unnamed one, otherwise the first in the file. A notice under **Settings → Repairs** lists each duplicated ID with the device that was imported and the one that was not. To get both devices into Home Assistant, give them different Device IDs in JetStream Designer, export again, then remove and re-add the integration with the new file.
 
 After setup, you can edit any entity's display name via HA's standard entity-rename UI on its device card.
 
@@ -172,7 +188,7 @@ Once configured, **⋮ → Configure** on the integration:
 - **"Failed to connect to Centralite bridge"** — check the serial port path (see [Find the serial port path](#2-find-the-serial-port-path)) and that nothing else is using the port. Confirm the bridge LED activity. Confirm "send CR after responses" (Elegance Customer Options bit #6) is enabled.
 - **Lights show wrong initial state** — the bridge may not have the "spontaneous output" flag set per load. Enable it in the Elegance Programming Software, OR rely on the safety-net poll.
 - **JetStream dimmers respond a few times and then stop, or state never updates** — the device's third-party reporting has not reached the hardware, even if the box looks checked in Designer. For each affected light in JetStream Designer: uncheck **Send T-Party**, click **Send Device** and wait; then check it again, click **Send Device** and wait. Confirm **Update Third Party** is still checked on the RS-232 bridge. This resolved unreliable dimmers on a 31-device system (reported by a user; it is not in CentraLite's manuals).
-- **A JetStream device is missing after import** — check that **Send T-Party** is checked for it and that the `.jts` was exported after you changed it. Also check for two devices sharing one Device ID in the project: only one of them is imported. Give each device a unique ID in Designer and export again.
+- **A JetStream device is missing after import** — see [Which JetStream devices are imported](#which-jetstream-devices-are-imported). The usual causes are **Send T-Party** unchecked, a `.jts` exported before the change was made, or two devices sharing one Device ID (check **Settings → Repairs**).
 - **Entities missing after upgrade from v1** — check Settings → Repairs for the migration log. If entities are still missing, file a bug with your `core.entity_registry` JSON (with secrets redacted).
 
 ### Watching the logs (debug logging)

@@ -159,6 +159,69 @@ def test_handles_encoding_declaration():
     assert cfg.loads == {7: "Den"}
 
 
+# --- Duplicate Device IDs ---
+#
+# The Device ID is the device's address on the RS-232 protocol, so two records
+# sharing one can only ever become one entity. The parser must pick one
+# deliberately and report the clash instead of silently keeping the last.
+
+
+def test_no_duplicates_reported_for_a_clean_file():
+    cfg = parse_jts(_doc(devices=_device(2, "Den") + _device(3, "Hall")))
+    assert cfg.duplicates == {}
+
+
+def test_duplicate_id_keeps_first_record_and_reports_both():
+    xml = _doc(
+        devices=_device(6, "Kitchen Cans", dimmer="false") + _device(6, "Pantry")
+    )
+    cfg = parse_jts(xml)
+    assert cfg.loads == {6: "Kitchen Cans"}
+    assert cfg.dimmable == {6: False}  # the kept record's setting, not Pantry's
+    assert cfg.duplicates == {6: ("Kitchen Cans", "Pantry")}  # kept one first
+
+
+def test_duplicate_id_prefers_a_named_record_over_an_unnamed_one():
+    cfg = parse_jts(_doc(devices=_device(6, "") + _device(6, "Pantry")))
+    assert cfg.loads == {6: "Pantry"}
+    assert cfg.duplicates == {6: ("Pantry", "")}
+
+
+def test_three_records_with_one_id():
+    xml = _doc(devices=_device(6, "A") + _device(6, "B") + _device(6, "C"))
+    cfg = parse_jts(xml)
+    assert cfg.loads == {6: "A"}
+    assert cfg.duplicates == {6: ("A", "B", "C")}
+
+
+def test_skipped_record_is_not_a_duplicate():
+    """A stale copy that is inactive or has Send T-Party off is ignored anyway,
+    so it must not be reported as a clash."""
+    xml = _doc(
+        devices=_device(6, "Old", active="false")
+        + _device(6, "Hidden", thirdparty="false")
+        + _device(6, "Kitchen Cans")
+    )
+    cfg = parse_jts(xml)
+    assert cfg.loads == {6: "Kitchen Cans"}
+    assert cfg.duplicates == {}
+
+
+def test_duplicate_id_uses_only_the_kept_records_buttons():
+    def dev(name, button_id):
+        return f"""\
+    <Device>
+      <DeviceID>6</DeviceID><Name>{name}</Name>
+      <SendThirdParty>true</SendThirdParty><Active>true</Active>
+      <buttonList>
+        <Button><ID>{button_id}</ID><tap><BtnAction>1</BtnAction></tap></Button>
+      </buttonList>
+    </Device>"""
+
+    cfg = parse_jts(_doc(devices=dev("Kitchen Cans", 0) + dev("Pantry", 1)))
+    assert cfg.buttons == {(6, 1): "Kitchen Cans Button 1"}
+
+
 # --- Standalone smoke-test runner ---
 
 if __name__ == "__main__":

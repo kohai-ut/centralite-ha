@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Changed
+
+- **JetStream `.jts` import now reports duplicate Device IDs instead of silently dropping a device.** When two usable devices in the file share a Device ID, setup still completes and one is imported (a named device before an unnamed one, otherwise the first in the file; previously the last one won with no message). A notice under Settings → Repairs lists each duplicated ID and both device names. Existing installs are not affected; this only applies when a `.jts` is imported.
+
 ## [2.0.1] - 2026-05-26
 
 ### Changed

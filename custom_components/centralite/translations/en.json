@@ -55,6 +55,10 @@
     "v1_migration": {
       "title": "Centralite v1 entities were migrated",
       "description": "Your previous Centralite integration's entities have been adopted into the new v2 integration:\n\n- {migrated_count} lights/switches/buttons were renamed to the v2 unique_id format (their entity IDs, areas, aliases, icons, and dashboard placements were preserved).\n- {deleted_count} entities were removed: old `scene.*` entities (both `-ON` and `-OFF`). In v2 a scene is a single `switch.` entity, a different domain, so the old scene entities can't be reused and are recreated fresh as scene-switches.\n\n**You may need to update automations or dashboards** that referenced the old entity IDs — especially scenes, which move from `scene.turn_on` to a `switch.` entity. Home Assistant does not automatically rewrite YAML automation files.\n\nMigration log:\n\n{summary}"
+    },
+    "jts_duplicate_ids": {
+      "title": "JetStream import: {count} Device ID(s) used more than once",
+      "description": "Your JetStream `.jts` file has more than one device with the same Device ID. A Device ID is the address Home Assistant uses to reach a device through the bridge, so only one device per ID could be imported:\n\n{details}\n\nSetup finished and every other device was imported normally.\n\n**To fix it:** in JetStream Designer, give each of these devices its own Device ID and send the change to the device. Then export the `.jts` again, remove this integration entry and add it back with the new file. If the device that was not imported is one you don't need in Home Assistant, you can ignore this notice."
     }
   }
 }
