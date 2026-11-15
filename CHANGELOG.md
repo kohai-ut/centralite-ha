@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-11-15
+
 ### Added
 
 - **JetStream light levels are now read after startup and reconnect** ([#35](https://github.com/kohai-ut/centralite-ha/issues/35), suggested and first tested by @pgyrogear). JetStream has no bulk-state command, so Home Assistant used to show a light as off after a restart until someone operated it. The integration now asks each configured load for its level with `^F` and applies the replies through the normal push-event path, so on/off state and brightness are both corrected.
