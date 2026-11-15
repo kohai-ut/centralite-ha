@@ -94,7 +94,7 @@ async def test_coordinator_fires_button_event(hass):
 
 async def test_device_trigger_fires_automation(hass):
     """End-to-end: a physical button event runs an automation via the device trigger."""
-    entry, device = _entry_and_device(
+    _entry, device = _entry_and_device(
         hass, SYSTEM_JETSTREAM, {CONF_BUTTON_IDS: [[44, 2]]}
     )
     fired = []

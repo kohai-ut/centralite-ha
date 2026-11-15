@@ -60,13 +60,14 @@ def _referenced_load_ids(text: str) -> set[int]:
     fields: dict[str, str] = {}
 
     def flush_button() -> None:
-        if section and BUTTON_HEADER_RE.match(section):
-            if (
-                fields.get("LOAD/SCENE") == "L"
-                and fields.get("ACTIVE") == "1"
-                and fields.get("#", "").isdigit()
-            ):
-                referenced.add(int(fields["#"]))
+        if (
+            section
+            and BUTTON_HEADER_RE.match(section)
+            and fields.get("LOAD/SCENE") == "L"
+            and fields.get("ACTIVE") == "1"
+            and fields.get("#", "").isdigit()
+        ):
+            referenced.add(int(fields["#"]))
 
     for raw_line in text.splitlines():
         line = raw_line.rstrip("\r")

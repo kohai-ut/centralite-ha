@@ -203,7 +203,7 @@ async def test_get_load_level_with_dev_response():
 
 async def test_get_load_level_ignores_unrelated_dev_push():
     """An unrelated DEV push during get_load_level should not fulfill the request."""
-    p, reader, w = await _make_protocol()
+    p, reader, _w = await _make_protocol()
     try:
         events = []
         p.set_load_event_callback(events.append)
@@ -242,7 +242,7 @@ async def test_get_device_name():
 
 async def test_get_device_name_empty_returns_none():
     """A configured-but-unnamed device echoes NAM + index with no name."""
-    p, reader, w = await _make_protocol()
+    p, reader, _w = await _make_protocol()
     try:
         task = asyncio.create_task(_feed_after(reader, b"NAM001   \r\n"))
         name = await p.get_device_name(1)
@@ -254,7 +254,7 @@ async def test_get_device_name_empty_returns_none():
 
 async def test_get_device_name_ignores_wrong_device():
     """A NAM for a different device must not fulfill this request."""
-    p, reader, w = await _make_protocol()
+    p, reader, _w = await _make_protocol()
     try:
         async def feed():
             await asyncio.sleep(0.01)
@@ -307,7 +307,6 @@ async def test_scan_aborts_on_disconnect():
             calls["n"] += 1
             if calls["n"] == 2:
                 p._lost = True  # simulate the reader loop dying mid-scan
-            return None
 
         p.get_device_name = fake_get_name  # type: ignore[method-assign]
         await _expect_raises_async(ProtocolError, p.scan_device_names(start=1, end=10))
@@ -496,7 +495,7 @@ if __name__ == "__main__":
     for name, t in async_tests:
         try:
             asyncio.run(t())
-        except Exception:
+        except Exception:  # noqa: BLE001
             failed.append((name, traceback.format_exc()))
         else:
             passed += 1

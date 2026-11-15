@@ -173,7 +173,7 @@ class _BaseSerialProtocol(CentraliteProtocol):
                 await self._writer.drain()
                 try:
                     response = await asyncio.wait_for(self._pending[0], timeout=timeout)
-                except asyncio.TimeoutError as e:
+                except TimeoutError as e:
                     raise ProtocolError(f"Timeout waiting for response to {command!r}") from e
                 _LOGGER.debug("recv: %r", response)
                 if self.inter_command_delay > 0:

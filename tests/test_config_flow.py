@@ -213,7 +213,6 @@ async def _jetstream_to_import(hass):
 async def test_jetstream_scan_import(hass):
     """Checking 'scan' discovers device names from the bridge and creates loads."""
     import functools
-
     from unittest.mock import patch
 
     result = await _jetstream_to_import(hass)
@@ -230,9 +229,8 @@ async def test_jetstream_scan_import(hass):
 
 
 async def test_jetstream_scan_connection_failure(hass):
-    from unittest.mock import patch
-
     import functools
+    from unittest.mock import patch
 
     result = await _jetstream_to_import(hass)
     fake = functools.partial(_FakeScanProto, connect_error=OSError("no device"))

@@ -163,6 +163,7 @@ async def test_sync_clock_on_connect_when_enabled(hass):
     )
     await coord.async_init()
     assert [c for c in proto.calls if c[0] == "set_clock"]
+    await coord.async_shutdown()
 
 
 async def test_no_sync_clock_when_disabled(hass):
@@ -171,6 +172,7 @@ async def test_no_sync_clock_when_disabled(hass):
     coord = CentraliteCoordinator(hass, _entry(hass), proto)
     await coord.async_init()
     assert not [c for c in proto.calls if c[0] == "set_clock"]
+    await coord.async_shutdown()
 
 
 async def test_no_sync_clock_when_unsupported(hass):
@@ -211,6 +213,7 @@ async def test_sync_clock_failure_does_not_break_setup(hass):
     )
     await coord.async_init()  # must not raise
     assert proto.connected is True
+    await coord.async_shutdown()
 
 
 async def test_reconnect_clock_failure_does_not_break_reconnect(hass):
@@ -341,6 +344,7 @@ async def test_reconnect_treats_immediate_redrop_as_failure(hass):
     proto.connect = orig_connect  # link comes back healthy
     await _advance(hass)
     assert coord.last_update_success is True
+    await coord.async_shutdown()
 
 
 async def test_safety_poll_not_scheduled_when_shutting_down(hass):

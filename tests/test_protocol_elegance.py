@@ -465,7 +465,7 @@ if __name__ == "__main__":
     for name, t in async_tests:
         try:
             asyncio.run(t())
-        except Exception:
+        except Exception:  # noqa: BLE001
             failed.append((name, traceback.format_exc()))
         else:
             passed += 1
@@ -474,7 +474,7 @@ if __name__ == "__main__":
     for name, t in sync_tests:
         try:
             t()
-        except Exception:
+        except Exception:  # noqa: BLE001
             failed.append((name, traceback.format_exc()))
         else:
             passed += 1
