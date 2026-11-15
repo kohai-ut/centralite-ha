@@ -3,7 +3,7 @@
 A modern Home Assistant custom integration for **Centralite Elegance** and **Centralite JetStream** lighting systems. Communicates with the bridge over RS-232.
 
 > [!NOTE]
-> **Status: v2.0.0 (stable).** A greenfield rewrite of the legacy v1 integrations
+> **Status: stable (v2).** A greenfield rewrite of the legacy v1 integrations
 > ([centralite_elegance](https://github.com/kohai-ut/centralite_elegance),
 > [centralite_jetstream](https://github.com/kohai-ut/centralite_jetstream), both archived at
 > `v1.0.1`), validated end-to-end against real Elegance and JetStream hardware. Considerably
@@ -20,7 +20,7 @@ CentraLite Systems made commercial lighting controllers that talk to switches an
 | Centralite Elegance | RS-232 bridge (single-system, multi-system planned) | Up to 192 loads, 384 switches, 256 scenes |
 | Centralite JetStream | RS-232 bridge | Up to ~199 loads, ~199 switches × 3 buttons, 100 scenes; `.jts` config import |
 
-A 19200-baud USB-to-serial adapter on the HA host (Raspberry Pi, NUC, VM) plugs into the bridge's RS-232 port. `/dev/serial/by-id/...` paths are recommended for stability across reboots.
+A USB-to-serial adapter on the HA host (Raspberry Pi, NUC, VM) plugs into the bridge's RS-232 port. Adapters with FTDI and Prolific chips are both known to work.
 
 ## Which integration should I use? (vs. the built-in LiteJet integration)
 
@@ -50,6 +50,54 @@ In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not
 - **HACS-compatible** — install as a custom repository (default-listing planned once stable)
 - **One-time migration from v1** — preserves areas, aliases, icons, and dashboard placements
 
+## Before you start
+
+Three things have to be right before Home Assistant can talk to the lights: the serial connection, the port path, and a few settings in CentraLite's own programming software. Most "it connects but nothing updates" problems come from the last one.
+
+### 1. Serial connection
+
+| Setting | Value |
+|---|---|
+| Baud rate | 19200 (the bridge default) |
+| Data bits | 8 |
+| Parity | None |
+| Stop bits | 1 |
+| Flow control | None |
+
+The integration only asks for the baud rate; the rest are fixed. The JetStream bridge uses a three-wire DB9 connection (pin 2 transmit, pin 3 receive, pin 5 ground).
+
+### 2. Find the serial port path
+
+Use the stable `/dev/serial/by-id/...` path, not `/dev/ttyUSB0`. The `ttyUSB` number can change after a reboot or when another USB device is plugged in.
+
+1. Plug the USB-to-serial adapter into the HA host.
+2. Open **Settings → System → Hardware → ⋮ → All hardware**.
+3. Find the adapter (often listed as `ttyUSB0`) and expand it.
+4. Copy the full path that starts with `/dev/serial/by-id/`, for example `/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A10R1M6X-if00-port0`.
+
+Paste the whole path, including the `/dev/serial/by-id/` prefix, into the integration's serial port field. If the adapter is not listed, unplug it, plug it back in, and reopen the list.
+
+### 3a. JetStream: prepare the system in JetStream Designer
+
+The JetStream bridge sends nothing to Home Assistant until third-party output is switched on, once for the bridge and once for each device. Do this in JetStream Designer, connected to your existing network through its USB programming bridge. Back up your Designer project first.
+
+1. Select the **RS-232 Bridge** in the device list and check **Update Third Party**.
+2. Check that the bridge's baud rate is 19200 (**Settings** on the bridge page). If you change it, click **Submit**.
+3. For each light you want in Home Assistant, open the device, check **Send T-Party**, and click **Send Device**. Wait for it to finish before moving to the next one.
+   - To set every device at once, use **Global Settings** and enable third-party reporting there.
+4. Save the project, then export the `.jts` file for the import step below.
+
+> [!IMPORTANT]
+> Saving the project does not program the hardware. A setting only takes effect once it has been sent to the device (**Send Device** or **Submit**). Likewise, importing a `.jts` into Home Assistant only tells Home Assistant what exists; it changes nothing on the JetStream system.
+
+The **Send T-Party** checkbox only appears after **Update Third Party** is checked on the bridge. Only devices with **Send T-Party** checked are imported from the `.jts`.
+
+### 3b. Elegance: prepare the system in the Elegance Programming Software
+
+- **Send CR after responses** (Customer Options bit #6) must be enabled. The integration relies on CR-framed responses and cannot change this setting over RS-232.
+- **Load updates:** set each load to "third party output", or turn DIP switch 5 ON (which reports all loads, one per second). Without either, Home Assistant only learns of changes from the safety-net poll.
+- **Switch state:** a keypad button only reports press and release if its "send action" flag is set. Pressing it from Home Assistant works either way.
+
 ## Installation (HACS custom repository)
 
 Until v2 ships to the HACS default repository:
@@ -71,19 +119,35 @@ The config flow has two steps:
 ### Step 1 — Bridge connection
 
 - **System type**: Elegance / JetStream
-- **Serial port**: e.g. `/dev/serial/by-id/usb-Prolific...` or `/dev/ttyUSB0`
+- **Serial port**: the full `/dev/serial/by-id/...` path (see [Find the serial port path](#2-find-the-serial-port-path))
 - **Baud rate**: defaults to 19200
 
 ### Step 2 — Names and devices
 
 You have two options for telling HA which loads/scenes/switches you have and what they're named:
 
-- **Paste your `.elg` (Elegance) or `.jts` (JetStream) config file** — the integration parses your friendly names and the list of configured loads and scenes automatically. Export `.elg` from the Centralite Elegance Programming Software; export `.jts` from JetStream Designer. (For JetStream, only devices set to report third-party output are imported, since the others can't be observed over RS-232. Physical keypad buttons aren't imported as entities yet.)
-- **Or enter comma-separated IDs** for loads, scenes, switches if you don't have an export file. Friendly names can be set per-entity in HA's UI afterwards.
+- **Paste your `.elg` (Elegance) or `.jts` (JetStream) config file** — the integration parses your friendly names and the list of configured loads and scenes automatically. Export `.elg` from the Centralite Elegance Programming Software; export `.jts` from JetStream Designer. (For JetStream, only devices with **Send T-Party** checked are imported, since the others can't be observed over RS-232. Configured keypad buttons on those devices are imported as switch entities.)
+- **Or enter comma-separated IDs** for loads, scenes, switches if you don't have an export file. Use the real device IDs from the programming software and keep any gaps: the first five devices are not necessarily 1 to 5. Friendly names can be set per-entity in HA's UI afterwards.
 
 Both paths can be combined. (Using the config file approach is the most tested.)
 
 After setup, you can edit any entity's display name via HA's standard entity-rename UI on its device card.
+
+### Verify it works
+
+1. Change a light's brightness from Home Assistant. The physical light should follow.
+2. Operate the same light at its wall switch. Home Assistant should update its on/off state and brightness shortly after.
+3. If step 1 works but step 2 does not, the device is not reporting to the bridge. See [Troubleshooting](#troubleshooting).
+
+For a closer look, turn on [debug logging](#watching-the-logs-debug-logging) and repeat the test. On JetStream, a working light produces lines like these:
+
+| Log line | Meaning |
+|---|---|
+| `rx: 'DEV10399'` | Device 103 reports level 99 (full on) |
+| `rx: 'DEV10300'` | Device 103 reports off |
+| `rx: 'ACT10301T'` | Device 103, button 1, tapped |
+
+A `send:` line with no `rx:` line after it means Home Assistant sent the command but the bridge reported nothing back.
 
 ### Options
 
@@ -93,57 +157,6 @@ Once configured, **⋮ → Configure** on the integration:
 
 > [!NOTE]
 > The bridge's "send CR after responses" Customer Option (Elegance bit #6) must be enabled in the Elegance Programming Software — the integration relies on CR-framed responses and cannot toggle this setting over RS-232.
-
-## Migration from v1
-
-Upgrading from the v1 integrations (`centralite_elegance` / `centralite_jetstream`, archived at `v1.0.1`)? v2 **adopts your existing entities in place.** When a v2 entry first loads, it detects v1 entities (by their `elegance.L001` / `jetstream.JSL001` unique_ids) and automatically:
-
-1. **Renames lights, switches, and buttons** to the v2 format, **preserving their `entity_id` and all customizations** (area, icon, alias, friendly-name override, dashboard placement). They keep working untouched.
-2. **Deletes the old `scene.*` entities (both `*ON` and `*OFF`).** In v2 a scene is a **`switch.` entity** (one stateful scene-switch, no ON/OFF pair) — a different domain from v1's `scene.*`, so the old entity can't be carried over; v2 recreates it fresh.
-3. Surfaces a **Repairs issue** with the full migration log.
-
-### Upgrade steps
-
-Do this in one maintenance window. The bridge's serial port can only be held by one integration at a time, so v1 and v2 can't both run against it.
-
-**First, take a full backup** (Settings → System → Backups → Create backup) and download a copy — it's your only clean rollback (see below).
-
-1. **Remove the v1 integration _code_ — but keep its entities.** This frees the serial port and leaves the v1 entities orphaned in the registry, which is exactly what the migration adopts.
-   - **Manual install:** from your config directory (`/config` in the Terminal & SSH add-on), back up then delete the v1 folders:
-     ```bash
-     cd /config
-     tar czf centralite-v1-$(date +%F).tar.gz custom_components/centralite custom_components/centralite-jetstream
-     rm -rf custom_components/centralite custom_components/centralite-jetstream
-     ```
-     (Adjust the names to match your install — a v1 from the archived repos is `centralite_elegance` / `centralite_jetstream`.)
-
-   > **Do NOT delete the v1 _config entry_** in Devices & Services — that purges its entities and leaves nothing to migrate. Remove only the *code*. (A YAML-configured v1 has no config entry anyway.)
-   >
-   > **Order matters — remove v1 _before_ installing v2.** v1 Elegance uses the `centralite` domain, i.e. the *same* `custom_components/centralite` folder v2 installs into, so installing v2 first and then deleting that folder would delete v2.
-
-2. **Remove the v1 YAML config** (v2 is UI-only — it has no YAML configuration):
-   - Delete the `centralite:` and/or `centralite-jetstream:` blocks (the ones with a `port:`) from `configuration.yaml`. The `centralite:` one is critical — leaving it throws *"The centralite integration does not support YAML configuration"* at startup.
-   - Drop any v1 `logger:` lines; a single `custom_components.centralite: debug` covers all of v2.
-   - `grep -rn "platform: centralite" /config/*.yaml` and remove any stray platform entries.
-
-3. **Restart Home Assistant.** Your v1 entities are now orphaned in the registry (any v1 config entry shows "integration not found").
-
-4. **Install v2 via HACS** as a custom repository (see [Installation](#installation-hacs-custom-repository) above), then **restart**.
-
-5. **Settings → Devices & Services → Add Integration → Centralite.** Pick the system type and serial port, and optionally paste your `.elg`/`.jts` for friendly names. On load, v2 renames the orphaned unique_ids to its scheme and adopts them. **Add it once per bridge** if you run both an Elegance and a JetStream.
-
-### After migrating
-
-- **Scenes** moved to the `switch.` domain with new `entity_id`s. Update any automation/script/dashboard that called `scene.turn_on(scene.<name>)` to use `switch.turn_on` / `switch.turn_off` on the new entity. A scene's area/icon customization doesn't carry across the domain change. The Repairs log lists every scene by its old name.
-- **Automation YAML** referencing renamed IDs isn't rewritten automatically — use the Repairs issue as your cross-reference.
-- The old v1 `scene.*` entities, and any now-empty v1 config entries, can be deleted.
-- Tip: You can see any 'unavailable' orphaned devices using Developer Tools in HA.
-
-### Rollback
-
-**Settings → System → Backups → your backup → Restore** (full) reverts config, entity registry, and HACS in one shot. This is the **only** clean revert — migration's `unique_id` renames make an in-place v1 downgrade impossible, so don't attempt one.
-
-For the full walkthrough — including a post-migration verification checklist and a no-risk way to rehearse the whole thing on a single production box — see **[docs/UPGRADE_TESTING.md](docs/UPGRADE_TESTING.md)**.
 
 ## Known limitations
 
@@ -156,8 +169,10 @@ For the full walkthrough — including a post-migration verification checklist a
 
 ## Troubleshooting
 
-- **"Failed to connect to Centralite bridge"** — check the serial port path with `dmesg | grep tty` after plugging in the USB adapter. Confirm the bridge LED activity. Confirm "send CR after responses" (Elegance Customer Options bit #6) is enabled.
+- **"Failed to connect to Centralite bridge"** — check the serial port path (see [Find the serial port path](#2-find-the-serial-port-path)) and that nothing else is using the port. Confirm the bridge LED activity. Confirm "send CR after responses" (Elegance Customer Options bit #6) is enabled.
 - **Lights show wrong initial state** — the bridge may not have the "spontaneous output" flag set per load. Enable it in the Elegance Programming Software, OR rely on the safety-net poll.
+- **JetStream dimmers respond a few times and then stop, or state never updates** — the device's third-party reporting has not reached the hardware, even if the box looks checked in Designer. For each affected light in JetStream Designer: uncheck **Send T-Party**, click **Send Device** and wait; then check it again, click **Send Device** and wait. Confirm **Update Third Party** is still checked on the RS-232 bridge. This resolved unreliable dimmers on a 31-device system (reported by a user; it is not in CentraLite's manuals).
+- **A JetStream device is missing after import** — check that **Send T-Party** is checked for it and that the `.jts` was exported after you changed it. Also check for two devices sharing one Device ID in the project: only one of them is imported. Give each device a unique ID in Designer and export again.
 - **Entities missing after upgrade from v1** — check Settings → Repairs for the migration log. If entities are still missing, file a bug with your `core.entity_registry` JSON (with secrets redacted).
 
 ### Watching the logs (debug logging)
@@ -178,6 +193,14 @@ What you'll see at debug level:
 - `rx: 'P044'` / `rx: 'ACT044...'` — **every raw line the bridge emits**, including spontaneous events from physical button presses and load changes. This is the ground truth for what the hardware is actually sending.
 - `send:` / `sendrecv:` / `recv:` — commands HA sends and their responses.
 - `switch event: idx=44 button=1 action=tap` / `load event:` / `scene event:` — the **decoded** interpretation of each push event. Compare the `idx` here against the physical device you operated to confirm the mapping (handy for the experimental Elegance switch import).
+
+## Migration from v1
+
+Upgrading from the separate v1 integrations (`centralite_elegance` / `centralite_jetstream`)? v2 adopts your existing entities in place, but the steps must be done in a specific order. Follow **[docs/MIGRATING_FROM_V1.md](docs/MIGRATING_FROM_V1.md)** before installing.
+
+## Credits
+
+The JetStream Designer preparation steps, the serial-port walkthrough and the Send T-Party fix draw on a [setup guide by pgyrogear](https://community.home-assistant.io/t/centralite-jetstream/1029391/2) on the Home Assistant community forum.
 
 ## Development
 
