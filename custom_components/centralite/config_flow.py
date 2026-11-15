@@ -10,6 +10,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -179,6 +180,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 button_pairs: set[tuple[int, int]] = set()  # JetStream (device, button)
                 nondimmable: set[int] = set()
                 disabled: set[int] = set()
+                jts_duplicates: dict[int, tuple[str, ...]] = {}
 
                 import_text = user_input.get("elg_text", "").strip()
                 is_jetstream = self._data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM
@@ -191,6 +193,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     jts = parse_jts(import_text)
                     if not jts.loads and not jts.scenes:
                         raise ValueError("unrecognized import text")
+                    jts_duplicates = jts.duplicates
                     for idx, name in jts.loads.items():
                         load_ids.add(idx)
                         if name:
@@ -290,6 +293,8 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._options[OPT_NONDIMMABLE_LOADS] = sorted(nondimmable)
 
                 title = f"Centralite {SYSTEM_LABELS[self._data[CONF_SYSTEM_TYPE]]}"
+                # Only once nothing else can reject the import.
+                self._report_duplicate_device_ids(jts_duplicates)
                 return self.async_create_entry(
                     title=title, data=self._data, options=self._options
                 )
@@ -309,6 +314,52 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "system": SYSTEM_LABELS[self._data[CONF_SYSTEM_TYPE]],
+            },
+        )
+
+    def _report_duplicate_device_ids(
+        self, duplicates: dict[int, tuple[str, ...]]
+    ) -> None:
+        """Tell the user about Device IDs shared by several .jts records.
+
+        Not an error: a Device ID is one address on the bridge, so one record
+        was imported per ID. But the other record is a real device that Home
+        Assistant cannot reach, which the user can only fix in JetStream
+        Designer — so say which IDs and which names, as a Repairs notice that
+        survives restarts, plus a log line.
+        """
+        issue_id = f"jts_duplicate_ids_{self.unique_id}"
+        if not duplicates:
+            # A clean re-import for the same bridge clears an earlier notice.
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
+
+        def label(name: str) -> str:
+            return f'"{name}"' if name else "(unnamed)"
+
+        lines = []
+        for idx, names in sorted(duplicates.items()):
+            kept, *dropped = names
+            lines.append(
+                f"- Device ID {idx}: imported {label(kept)}; "
+                f"not imported: {', '.join(label(n) for n in dropped)}"
+            )
+        _LOGGER.warning(
+            "The .jts file uses these Device IDs more than once; one record "
+            "per ID was imported:\n%s",
+            "\n".join(lines),
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            is_persistent=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="jts_duplicate_ids",
+            translation_placeholders={
+                "count": str(len(duplicates)),
+                "details": "\n".join(lines),
             },
         )
 

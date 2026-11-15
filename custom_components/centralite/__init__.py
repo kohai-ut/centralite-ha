@@ -81,6 +81,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clear the duplicate-Device-ID notice raised at import, if any.
+
+    The notice is tied to this bridge's import; once the entry is gone (for
+    example to re-import a corrected .jts) it no longer describes anything.
+    """
+    from homeassistant.helpers import issue_registry as ir
+
+    from .const import DOMAIN
+
+    ir.async_delete_issue(hass, DOMAIN, f"jts_duplicate_ids_{entry.unique_id}")
+
+
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload integration when options change so renames/poll-interval take effect."""
     await hass.config_entries.async_reload(entry.entry_id)

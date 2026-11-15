@@ -175,6 +175,81 @@ async def test_jts_import_jetstream(hass):
     assert result["options"][OPT_SWITCH_NAMES]["003.01"] == "Hall Relay Button 1"
 
 
+async def test_jts_import_with_duplicate_device_id_succeeds_and_raises_repair(hass):
+    """Two records sharing a Device ID must not fail setup: one is imported and
+    a Repairs notice names both, so the user can fix the project."""
+    from homeassistant.helpers import issue_registry as ir
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_SYSTEM_TYPE: "jetstream", CONF_PORT: "/dev/ttyUSB0", CONF_BAUD: 19200},
+    )
+
+    def dev(did, name):
+        return (
+            f"<Device><DeviceID>{did}</DeviceID><Name>{name}</Name>"
+            "<Dimmer>true</Dimmer><SendThirdParty>true</SendThirdParty>"
+            "<Active>true</Active></Device>"
+        )
+
+    jts = (
+        "<GulfStreamCL><DeviceList>"
+        + dev(2, "Den")
+        + dev(6, "Kitchen Cans")
+        + dev(6, "Pantry")
+        + "</DeviceList></GulfStreamCL>"
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": jts, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_LOAD_IDS] == [2, 6]
+    assert result["options"][OPT_LOAD_NAMES] == {"2": "Den", "6": "Kitchen Cans"}
+
+    issues = [
+        i
+        for i in ir.async_get(hass).issues.values()
+        if i.domain == DOMAIN and i.translation_key == "jts_duplicate_ids"
+    ]
+    assert len(issues) == 1
+    assert issues[0].is_fixable is False
+    assert issues[0].is_persistent is True  # must survive a restart
+    details = issues[0].translation_placeholders["details"]
+    assert "6" in details and "Kitchen Cans" in details and "Pantry" in details
+
+    # Removing the entry (e.g. to re-import a corrected file) clears the notice.
+    await hass.config_entries.async_remove(result["result"].entry_id)
+    await hass.async_block_till_done()
+    assert not [i for i in ir.async_get(hass).issues.values() if i.domain == DOMAIN]
+
+
+async def test_jts_import_without_duplicates_raises_no_repair(hass):
+    from homeassistant.helpers import issue_registry as ir
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_SYSTEM_TYPE: "jetstream", CONF_PORT: "/dev/ttyUSB0", CONF_BAUD: 19200},
+    )
+    jts = (
+        "<GulfStreamCL><DeviceList><Device><DeviceID>2</DeviceID><Name>Den</Name>"
+        "<SendThirdParty>true</SendThirdParty><Active>true</Active></Device>"
+        "</DeviceList></GulfStreamCL>"
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"elg_text": jts, "load_ids_csv": "", "scene_ids_csv": "", "switch_ids_csv": ""},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert not [i for i in ir.async_get(hass).issues.values() if i.domain == DOMAIN]
+
+
 class _FakeScanProto:
     """Stand-in for JetStreamProtocol used by the config-flow scan tests."""
 
