@@ -165,7 +165,7 @@ if __name__ == "__main__":
     for name, t in tests:
         try:
             t()
-        except Exception:
+        except Exception:  # noqa: BLE001
             failed.append((name, traceback.format_exc()))
         else:
             passed += 1

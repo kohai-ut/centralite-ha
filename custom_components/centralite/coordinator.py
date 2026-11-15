@@ -259,7 +259,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Treat as success only if the link is still up — it may have
             # dropped again during the open/prime window.
             success = self.protocol.connected
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - any failure means "retry later"
             _LOGGER.debug("Reconnect attempt failed (%s)", err)
         finally:
             self._reconnecting = False
