@@ -102,6 +102,12 @@ class JetStreamProtocol(_BaseSerialProtocol):
         # arrives as spontaneous DEV/ACT/SCN output. State is push-only.
         return False
 
+    @property
+    def supports_per_load_query(self) -> bool:
+        # ^F is the only documented state read (one device per command), so
+        # initial levels are refreshed load by load.
+        return True
+
     async def activate_load(self, idx: int) -> None:
         self._validate_load_idx(idx)
         await self._send(f"^A{idx:03d}")
@@ -118,15 +124,22 @@ class JetStreamProtocol(_BaseSerialProtocol):
             raise ValueError(f"rate must be 0-31, got {rate}")
         await self._send(f"^E{idx:03d}{level:02d}{rate:02d}")
 
-    async def get_load_level(self, idx: int) -> int:
-        """Send ^F and wait for a DEV response specifically for this idx."""
+    async def get_load_level(
+        self, idx: int, *, timeout: float = COMMAND_TIMEOUT
+    ) -> int:
+        """Send ^F and wait for a DEV response specifically for this idx.
+
+        Raises ProtocolError if no matching DEV arrives within `timeout`.
+        """
         self._validate_load_idx(idx)
         expected_prefix = f"{DEV_PREFIX}{idx:03d}"
 
         def matches(line: str) -> bool:
             return len(line) == DEV_LEN and line.startswith(expected_prefix)
 
-        response = await self._sendrecv(f"^F{idx:03d}", matches=matches)
+        response = await self._sendrecv(
+            f"^F{idx:03d}", matches=matches, timeout=timeout
+        )
         try:
             return int(response[6:8])
         except ValueError as e:

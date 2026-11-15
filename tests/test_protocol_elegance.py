@@ -323,6 +323,9 @@ async def test_elegance_supports_bulk_query():
     p, _r, _w = await _make_protocol()
     try:
         assert p.supports_bulk_query is True
+        # Elegance reads every load in one ^G, so it never needs the
+        # per-load background refresh.
+        assert p.supports_per_load_query is False
     finally:
         await p.disconnect()
 

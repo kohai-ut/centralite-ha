@@ -164,6 +164,18 @@ class CentraliteProtocol(ABC):
         return True
 
     @property
+    def supports_per_load_query(self) -> bool:
+        """Whether initial state must be read one load at a time.
+
+        True for bridges with no bulk command but a per-load level query
+        (JetStream ^F). The coordinator then refreshes each configured load in
+        a background task after connecting, instead of priming from a bulk
+        query. Such a protocol's get_load_level must accept a ``timeout``
+        keyword so the refresh can bound its wait on a silent device.
+        """
+        return False
+
+    @property
     def supports_clock(self) -> bool:
         """Whether the bridge has a settable real-time clock.
 

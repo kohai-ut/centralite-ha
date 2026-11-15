@@ -60,6 +60,9 @@ async def test_capability_flags():
     try:
         assert p.supports_device_name_query is True
         assert p.supports_scene_push is True
+        # No bulk command, but ^F reads one load at a time; the coordinator
+        # uses this to refresh levels in the background after (re)connect.
+        assert p.supports_per_load_query is True
     finally:
         await p.disconnect()
 
@@ -220,6 +223,19 @@ async def test_get_load_level_ignores_unrelated_dev_push():
         # Both DEV pushes fire the callback
         assert events == [LoadEvent(idx=20, level=99), LoadEvent(idx=10, level=77)]
         await task
+    finally:
+        await p.disconnect()
+
+
+async def test_get_load_level_honors_per_call_timeout():
+    """A silent device must fail after the caller's timeout, not the 2s default,
+    so a background refresh can bound how long it waits on each load."""
+    p, _reader, _w = await _make_protocol()
+    try:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        await _expect_raises_async(ProtocolError, p.get_load_level(10, timeout=0.05))
+        assert loop.time() - start < 1.0
     finally:
         await p.disconnect()
 

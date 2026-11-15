@@ -39,6 +39,7 @@ In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not
 - **Native HA config flow** — UI setup, no YAML editing required
 - **Async serial** via the HA-blessed [`serialx`](https://github.com/home-assistant-libs/serialx) library
 - **Push-primary updates** with an optional safety-net `^G` poll for loads not programmed for spontaneous output
+- **Correct light states after a restart (JetStream)** — JetStream has no "report everything" command, so after Home Assistant starts or the bridge reconnects, the integration asks each light for its level (`^F`) in the background. Startup is never held up waiting for it
 - **One switch per scene** — no more `-ON`/`-OFF` entity pairs (v1 limitation removed)
 - **Config import** — bulk-import friendly names, scenes, and the device list from your Centralite `.elg` (Elegance) or `.jts` (JetStream) export
 - **JetStream device discovery** — no config file? Optionally scan the bridge at setup (`^N`) to pull in device names directly. One-time, never on boot
@@ -169,7 +170,7 @@ A `send:` line with no `rx:` line after it means Home Assistant sent the command
 
 Once configured, **⋮ → Configure** on the integration:
 
-- **Safety-net poll interval** — Elegance only: how often to do a full `^G` query as a fallback for loads not configured for push notifications (default 300s; `0` disables). JetStream has no bulk-state command and is push-only, so this setting has no effect there.
+- **Safety-net poll interval** — Elegance only: how often to do a full `^G` query as a fallback for loads not configured for push notifications (default 300s; `0` disables). JetStream has no bulk-state command, so this setting has no effect there; its light levels are read once after each connect (see Troubleshooting) and kept current by push events.
 
 > [!NOTE]
 > The bridge's "send CR after responses" Customer Option (Elegance bit #6) must be enabled in the Elegance Programming Software — the integration relies on CR-framed responses and cannot toggle this setting over RS-232.
@@ -186,7 +187,8 @@ Once configured, **⋮ → Configure** on the integration:
 ## Troubleshooting
 
 - **"Failed to connect to Centralite bridge"** — check the serial port path (see [Find the serial port path](#2-find-the-serial-port-path)) and that nothing else is using the port. Confirm the bridge LED activity. Confirm "send CR after responses" (Elegance Customer Options bit #6) is enabled.
-- **Lights show wrong initial state** — the bridge may not have the "spontaneous output" flag set per load. Enable it in the Elegance Programming Software, OR rely on the safety-net poll.
+- **Lights show wrong initial state (Elegance)** — the bridge may not have the "spontaneous output" flag set per load. Enable it in the Elegance Programming Software, OR rely on the safety-net poll.
+- **Lights show wrong initial state (JetStream)** — levels are read in the background after Home Assistant starts or the bridge reconnects, one light at a time, so a large system can take a minute or two to settle. The log has one summary line (`Load level refresh: N of M configured loads answered`). A device that doesn't answer (for example a keypad that controls no load) is skipped; with debug logging on, the unanswered device numbers are listed.
 - **JetStream dimmers respond a few times and then stop, or state never updates** — the device's third-party reporting has not reached the hardware, even if the box looks checked in Designer. For each affected light in JetStream Designer: uncheck **Send T-Party**, click **Send Device** and wait; then check it again, click **Send Device** and wait. Confirm **Update Third Party** is still checked on the RS-232 bridge. This resolved unreliable dimmers on a 31-device system (reported by a user; it is not in CentraLite's manuals).
 - **A JetStream device is missing after import** — see [Which JetStream devices are imported](#which-jetstream-devices-are-imported). The usual causes are **Send T-Party** unchecked, a `.jts` exported before the change was made, or two devices sharing one Device ID (check **Settings → Repairs**).
 - **Entities missing after upgrade from v1** — check Settings → Repairs for the migration log. If entities are still missing, file a bug with your `core.entity_registry` JSON (with secrets redacted).
