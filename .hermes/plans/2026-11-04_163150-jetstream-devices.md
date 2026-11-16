@@ -14,6 +14,8 @@
 
 **Tracking issues:** #40 this plan; #42 add a device after setup (§6A); #41 button switch stays on (out of scope here, §1); #43 status reported under a different device ID (open question that may affect §4, see §6A).
 
+**Superseded in part (2026-11-15):** `2026-11-15_213000-v3-release-design.md` sets the release sequence and adds the keypad-button design. Three things in this document change under it: the single-bridge layout is deprecated in v3.0 and converted in v4.0 instead of kept forever (§4, §7); button switches are deprecated, so new installs and added devices get event and button entities instead (§1 out-of-scope list, §6A); and the subentry question in §6A is answered there (stored lists for v3.0). Everything else here stands.
+
 ---
 
 ## 1. Scope and explicit non-goals
