@@ -65,5 +65,20 @@
     "unit": {
       "name": "Device {id}"
     }
+  },
+  "entity": {
+    "event": {
+      "keypad_button": {
+        "name": "Button {number}"
+      }
+    },
+    "button": {
+      "tap_button": {
+        "name": "Tap button {number}"
+      },
+      "hold_button": {
+        "name": "Hold button {number}"
+      }
+    }
   }
 }

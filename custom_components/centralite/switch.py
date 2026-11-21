@@ -27,6 +27,7 @@ from .const import (
     SYSTEM_JETSTREAM,
 )
 from .entity import CentraliteBaseEntity
+from .jetstream_devices import is_per_device
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -44,7 +45,11 @@ async def async_setup_entry(
     coordinator: CentraliteCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[SwitchEntity] = []
 
-    if entry.data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM:
+    if is_per_device(entry.data):
+        # Per-device layout: keypad buttons are event and button entities
+        # (event.py, button.py), never switches.
+        pass
+    elif entry.data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM:
         for pair in entry.data.get(CONF_BUTTON_IDS, []):
             device, button = pair[0], pair[1]
             entities.append(CentraliteJetStreamButtonSwitch(coordinator, device, button))

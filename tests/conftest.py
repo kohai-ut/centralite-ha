@@ -117,11 +117,23 @@ class FakeProtocol(CentraliteProtocol):
     async def deactivate_scene(self, idx: int) -> None:
         self.calls.append(("deactivate_scene", idx))
 
-    async def press_switch(self, idx: int, *, auto_release: bool = True) -> None:
-        self.calls.append(("press_switch", idx))
+    async def press_switch(
+        self, idx: int, *, button: int | None = None, auto_release: bool = True
+    ) -> None:
+        # Elegance callers pass no button; JetStream callers always do.
+        self.calls.append(
+            ("press_switch", idx) if button is None else ("press_switch", idx, button)
+        )
 
-    async def release_switch(self, idx: int) -> None:
-        self.calls.append(("release_switch", idx))
+    async def release_switch(self, idx: int, *, button: int | None = None) -> None:
+        self.calls.append(
+            ("release_switch", idx)
+            if button is None
+            else ("release_switch", idx, button)
+        )
+        if getattr(self, "fail_release_once", False):
+            self.fail_release_once = False
+            raise ProtocolError("release not acknowledged")
 
     async def tap_switch(self, idx: int, *, button: int = 1) -> None:
         self.calls.append(("tap_switch", idx, button))

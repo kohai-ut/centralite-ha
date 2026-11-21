@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Plain strings so this constant doesn't require importing the Platform enum
 # at module load (which would force a homeassistant import).
-PLATFORMS: list[str] = ["button", "light", "switch"]
+PLATFORMS: list[str] = ["button", "event", "light", "switch"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -74,6 +74,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         model=coordinator.system_label,
     )
 
+    _remove_button_switches_on_per_device(hass, entry)
+
     try:
         await coordinator.async_init()
     except Exception as e:
@@ -83,6 +85,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+def _remove_button_switches_on_per_device(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Drop the old JetStream button switches once an entry is per-device.
+
+    An entry has the button switches (original layout) or the event and
+    button entities (per-device layout), never both. Moving to per-device is
+    the user's explicit choice, made after a preview that lists these
+    switches; this only carries it out, and does nothing on later loads.
+    """
+    from homeassistant.helpers import entity_registry as er
+
+    from .const import DOMAIN
+    from .jetstream_devices import is_per_device
+
+    if not is_per_device(entry.data):
+        return
+    registry = er.async_get(hass)
+    prefix = f"{entry.entry_id}_button_"
+    for row in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            row.domain == "switch"
+            and row.platform == DOMAIN
+            and row.unique_id.startswith(prefix)
+        ):
+            _LOGGER.info("Removing retired button switch %s", row.entity_id)
+            registry.async_remove(row.entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

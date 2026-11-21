@@ -54,6 +54,12 @@ EVENT_BUTTON: Final = f"{DOMAIN}_event"
 CONF_SUBTYPE: Final = "subtype"
 
 
+# How long the "Hold button" entity keeps a JetStream button pressed before
+# releasing it. A press counts as a hold somewhere between about 0.5 s and 1 s
+# (measured), so this leaves a clear margin.
+BUTTON_HOLD_SECONDS: Final = 2.0
+
+
 def button_subtype(device_idx: int, button: int) -> str:
     """Stable subtype string identifying one keypad button.
 
