@@ -162,12 +162,13 @@ async def test_settings_still_reachable_from_the_menu(hass):
     assert result["data"][OPT_LOAD_NAMES] == {"1": "Kitchen Cans", "2": "Hall"}
 
 
-async def test_per_device_jetstream_goes_straight_to_settings(hass):
+async def test_per_device_jetstream_is_not_offered_the_move_again(hass):
     entry = _entry(hass, per_device=True)
     await _setup(hass, entry)
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    assert result["type"] is FlowResultType.MENU
+    assert "organize" not in result["menu_options"]
+    assert "settings" in result["menu_options"]
 
 
 async def test_organize_requires_confirmation(hass):
