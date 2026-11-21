@@ -57,6 +57,8 @@ After moving, **Configure** offers:
 - **Change a device** between dimmer and on/off.
 - **Remove a device**, after a confirmation listing what will be deleted. **Delete** in the Device info card on a device's own page does the same.
 
+If you remove a device and later add the same Device ID again, Home Assistant gives its entities their earlier entity IDs back, so anything that used them works again. The device itself is new: it takes the name you enter, or "Device NNN" if you enter none, and its area and any settings you gave the old entities are not restored.
+
 A device must already be programmed in JetStream Designer, with **Send T-Party** on and **Update Third Party** done on the bridge.
 
 ## Lights that do not answer
