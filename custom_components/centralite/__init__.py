@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.device_registry import DeviceEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -160,6 +161,44 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator: CentraliteCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await coordinator.async_shutdown()
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device: DeviceEntry
+) -> bool:
+    """Allow Delete on a JetStream unit's device page.
+
+    Home Assistant removes the device and its entities once this returns
+    True. The unit is also taken out of the stored device lists here, or the
+    next load would create it again. The bridge device cannot be deleted
+    this way; remove the integration entry for that.
+    """
+    from .jetstream_devices import (
+        DeviceEditError,
+        parse_unit_identifier,
+        remove_unit,
+    )
+
+    idx = next(
+        (
+            parsed
+            for identifier in device.identifiers
+            if (parsed := parse_unit_identifier(entry.entry_id, identifier))
+            is not None
+        ),
+        None,
+    )
+    if idx is None:
+        return False
+    try:
+        data, options = remove_unit(entry.data, entry.options, idx)
+    except DeviceEditError:
+        # Already gone from the lists: a leftover device, safe to delete.
+        return True
+    _LOGGER.info("Removing JetStream device %03d at the user's request", idx)
+    # The entry's update listener reloads it once.
+    hass.config_entries.async_update_entry(entry, data=data, options=options)
+    return True
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

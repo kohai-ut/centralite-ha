@@ -38,7 +38,7 @@ Afterwards:
 
 - Each light is on a device named from your JetStream project. A light that had its own area keeps it; the others start in the bridge's area.
 - Rename a device or move it to another area from its device page. The light takes its name from the device.
-- A light you had renamed yourself keeps your name, shown after the device name. Clear the entity's name if you want it to show as the device name alone.
+- A light you had renamed yourself keeps your name. To use the device's name instead, turn on **Use device name** in the light's settings.
 
 A notice under **Settings → Repairs** reminds you while a bridge is still on the old layout. In version 4.0, bridges that have not moved will be moved automatically.
 
@@ -55,9 +55,13 @@ After moving, **Configure** offers:
 - **Add a device**: the Device ID from JetStream Designer, its type (dimmer, on/off switch, keypad only) and which buttons to add. You can queue several before saving.
 - **Add several devices**: one per line, for example `81, dimmer, 1, 3`.
 - **Change a device** between dimmer and on/off.
-- **Remove a device**, after a confirmation listing what will be deleted.
+- **Remove a device**, after a confirmation listing what will be deleted. **Delete** in the ⋮ menu on a device's own page does the same.
 
 A device must already be programmed in JetStream Designer, with **Send T-Party** on and **Update Third Party** done on the bridge.
+
+## Lights that do not answer
+
+JetStream is asked for each light's level one at a time after a restart or reload. A unit with a weak radio link may not answer. Its light then keeps the state Home Assistant last knew, until the unit next reports.
 
 ## Requirements
 

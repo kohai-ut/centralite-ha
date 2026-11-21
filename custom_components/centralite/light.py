@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode, LightEntity
+from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     CONF_DISABLED_LOADS,
@@ -47,7 +49,7 @@ async def async_setup_entry(
     )
 
 
-class CentraliteLight(CentraliteBaseEntity, LightEntity):
+class CentraliteLight(CentraliteBaseEntity, LightEntity, RestoreEntity):
     """A single Centralite-controlled load.
 
     Dimmable loads use ColorMode.BRIGHTNESS; on/off relays use ColorMode.ONOFF
@@ -78,6 +80,34 @@ class CentraliteLight(CentraliteBaseEntity, LightEntity):
         else:
             names = coordinator.config_entry.options.get(OPT_LOAD_NAMES, {})
             self._set_name(names.get(str(idx)), "load", id=f"{idx:03d}")
+
+    async def async_added_to_hass(self) -> None:
+        """Start from the last known state when the bridge has said nothing.
+
+        A bridge with a bulk query (Elegance) has already reported every load
+        by now, and that always wins. JetStream is asked one load at a time in
+        the background, and a unit with a weak radio link may never answer;
+        without this its light would read "off" after every restart or reload
+        until someone used it. Any later report replaces the restored value.
+        """
+        await super().async_added_to_hass()
+        loads = self.coordinator.data["loads"]
+        if self._idx in loads:
+            return
+        last = await self.async_get_last_state()
+        if last is None or last.state not in (STATE_ON, STATE_OFF):
+            return
+        if self._idx in loads:  # a report arrived while we were reading
+            return
+        on = last.state == STATE_ON
+        level = 0
+        if on:
+            brightness = last.attributes.get(ATTR_BRIGHTNESS)
+            if self._dimmable and isinstance(brightness, (int, float)):
+                level = min(99, max(1, round(brightness / 255 * 99)))
+            else:
+                level = 99
+        loads[self._idx] = {"on": on, "level": level}
 
     @property
     def _state(self) -> dict[str, Any]:

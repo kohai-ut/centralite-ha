@@ -415,6 +415,16 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return CentraliteOptionsFlow()
 
 
+def _markdown_list(items: list[str]) -> str:
+    """A bulleted list for a flow description, or a dash when it is empty.
+
+    Flow descriptions are rendered as Markdown. An empty list must not be a
+    lone hyphen: under a line of text that turns the line into a heading. The
+    em dash is plain text and needs no translation.
+    """
+    return "\n".join(f"- {item}" for item in items) if items else "\u2014"
+
+
 class CentraliteOptionsFlow(OptionsFlow):
     """Settings, plus moving a JetStream entry to one device per unit.
 
@@ -426,6 +436,7 @@ class CentraliteOptionsFlow(OptionsFlow):
         super().__init__()
         self._pending: list[DeviceAddition] = []
         self._removing: int | None = None
+        self._changing: int | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -605,20 +616,9 @@ class CentraliteOptionsFlow(OptionsFlow):
         loads = sorted(entry.data.get(CONF_LOAD_IDS, []))
         if not loads:
             return self.async_abort(reason="no_devices")
-        errors: dict[str, str] = {}
         if user_input is not None:
-            try:
-                options = change_load_type(
-                    entry.data,
-                    entry.options,
-                    int(user_input["device"]),
-                    dimmable=user_input["device_type"] == TYPE_DIMMER,
-                )
-            except DeviceEditError as err:
-                errors["base"] = err.code
-            else:
-                return self.async_create_entry(title="", data=options)
-
+            self._changing = int(user_input["device"])
+            return await self.async_step_change_type()
         schema = vol.Schema(
             {
                 vol.Required("device"): SelectSelector(
@@ -626,18 +626,56 @@ class CentraliteOptionsFlow(OptionsFlow):
                         options=self._device_options(loads),
                         mode=SelectSelectorMode.DROPDOWN,
                     )
-                ),
-                vol.Required("device_type", default=TYPE_DIMMER): SelectSelector(
+                )
+            }
+        )
+        return self.async_show_form(step_id="change_device", data_schema=schema)
+
+    async def async_step_change_type(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        entry = self.config_entry
+        idx = self._changing
+        if idx is None:
+            return await self.async_step_change_device()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                options = change_load_type(
+                    entry.data,
+                    entry.options,
+                    idx,
+                    dimmable=user_input["device_type"] == TYPE_DIMMER,
+                )
+            except DeviceEditError as err:
+                errors["base"] = err.code
+            else:
+                return self.async_create_entry(title="", data=options)
+
+        # Start on what the light is now, so an unread submit changes nothing.
+        current = (
+            TYPE_SWITCH
+            if idx in entry.options.get(OPT_NONDIMMABLE_LOADS, [])
+            else TYPE_DIMMER
+        )
+        schema = vol.Schema(
+            {
+                vol.Required("device_type", default=current): SelectSelector(
                     SelectSelectorConfig(
                         options=[TYPE_DIMMER, TYPE_SWITCH],
                         mode=SelectSelectorMode.DROPDOWN,
                         translation_key="device_type",
                     )
-                ),
+                )
             }
         )
         return self.async_show_form(
-            step_id="change_device", data_schema=schema, errors=errors
+            step_id="change_type",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "device": f"{idx:03d} {unit_name(entry.options, idx) or ''}".strip()
+            },
         )
 
     async def async_step_remove_device(
@@ -718,7 +756,7 @@ class CentraliteOptionsFlow(OptionsFlow):
             errors=errors,
             description_placeholders={
                 "device": f"{idx:03d} {unit_name(entry.options, idx) or ''}".strip(),
-                "entities": "\n".join(f"- {row.entity_id}" for row in rows) or "-",
+                "entities": _markdown_list([row.entity_id for row in rows]),
             },
         )
 
@@ -788,9 +826,6 @@ class CentraliteOptionsFlow(OptionsFlow):
                 return self.async_create_entry(title="", data=dict(entry.options))
             errors["confirm"] = "confirm_required"
 
-        def _listing(items: list[str]) -> str:
-            return "\n".join(f"- {item}" for item in items) if items else "-"
-
         return self.async_show_form(
             step_id="organize",
             data_schema=vol.Schema(
@@ -801,8 +836,8 @@ class CentraliteOptionsFlow(OptionsFlow):
                 "units": str(preview.units),
                 "lights": str(preview.lights),
                 "switches": str(len(preview.removed_switches)),
-                "switch_list": _listing(preview.removed_switches),
-                "references": _listing(preview.references),
-                "renamed": _listing(preview.renamed_lights),
+                "switch_list": _markdown_list(preview.removed_switches),
+                "references": _markdown_list(preview.references),
+                "renamed": _markdown_list(preview.renamed_lights),
             },
         )

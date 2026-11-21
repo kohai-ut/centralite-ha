@@ -322,3 +322,16 @@ async def test_elegance_gets_no_notice_and_no_menu(hass):
     assert _issue(hass, entry) is None
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.FORM
+
+
+async def test_empty_lists_are_not_shown_as_a_lone_hyphen(hass):
+    """A lone "-" under a line makes Markdown render that line as a heading."""
+    entry = _entry(hass)
+    await _setup(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "organize"}
+    )
+    placeholders = result["description_placeholders"]
+    assert placeholders["references"].strip()
+    assert all(value.strip() != "-" for value in placeholders.values())
