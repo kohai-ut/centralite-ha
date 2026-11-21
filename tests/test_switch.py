@@ -72,4 +72,6 @@ async def test_scene_switch_elegance_commanded(hass):
 
 async def test_scene_switch_default_name(hass):
     coord = _coord(hass, SYSTEM_ELEGANCE)
-    assert CentraliteSceneSwitch(coord, 7)._attr_name == "Scene 007"
+    scene = CentraliteSceneSwitch(coord, 7)
+    assert scene.translation_key == "scene"
+    assert scene._attr_translation_placeholders == {"id": "007"}

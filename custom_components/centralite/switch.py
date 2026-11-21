@@ -71,7 +71,7 @@ class CentraliteEleganceButtonSwitch(CentraliteBaseEntity, SwitchEntity):
         self._idx = idx
         self._attr_unique_id = f"{self._entry_id}_switch_{idx:03d}"
         names = coordinator.config_entry.options.get(OPT_SWITCH_NAMES, {})
-        self._attr_name = names.get(str(idx), f"Switch {idx:03d}")
+        self._set_name(names.get(str(idx)), "keypad_switch", id=f"{idx:03d}")
 
     @property
     def is_on(self) -> bool:
@@ -99,7 +99,12 @@ class CentraliteJetStreamButtonSwitch(CentraliteBaseEntity, SwitchEntity):
         self._attr_unique_id = f"{self._entry_id}_button_{device_idx:03d}_{button_idx:02d}"
         names = coordinator.config_entry.options.get(OPT_SWITCH_NAMES, {})
         key = f"{device_idx:03d}.{button_idx:02d}"
-        self._attr_name = names.get(key, f"Switch {device_idx:03d} Button {button_idx}")
+        self._set_name(
+            names.get(key),
+            "button_switch",
+            id=f"{device_idx:03d}",
+            number=str(button_idx),
+        )
 
     @property
     def is_on(self) -> bool:
@@ -121,7 +126,7 @@ class CentraliteSceneSwitch(CentraliteBaseEntity, SwitchEntity):
         self._idx = idx
         self._attr_unique_id = f"{self._entry_id}_scene_{idx:03d}"
         names = coordinator.config_entry.options.get(OPT_SCENE_NAMES, {})
-        self._attr_name = names.get(str(idx), f"Scene {idx:03d}")
+        self._set_name(names.get(str(idx)), "scene", id=f"{idx:03d}")
 
     @property
     def is_on(self) -> bool:

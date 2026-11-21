@@ -56,7 +56,7 @@ class CentraliteSyncClockButton(CentraliteBaseEntity, ButtonEntity):
     def __init__(self, coordinator: CentraliteCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{self._entry_id}_sync_clock"
-        self._attr_name = "Sync Clock"
+        self._attr_translation_key = "sync_clock"
 
     async def async_press(self) -> None:
         # The bridge RTC tracks wall-clock local time, and encode_bcd_clock

@@ -88,7 +88,10 @@ async def test_turn_off(hass):
 async def test_name_from_options(hass):
     coord = _coord(hass, {OPT_LOAD_NAMES: {"1": "Kitchen"}})
     assert CentraliteLight(coord, 1)._attr_name == "Kitchen"
-    assert CentraliteLight(coord, 2)._attr_name == "Load 002"
+    # No imported name: the translated fallback "Load {id}" (test_entity_names.py).
+    unnamed = CentraliteLight(coord, 2)
+    assert unnamed.translation_key == "load"
+    assert unnamed._attr_translation_placeholders == {"id": "002"}
 
 
 # --- Load-type (dimmable vs on/off) ---

@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+Version 3. JetStream changes how it appears in Home Assistant; Elegance is unchanged. See [docs/UPGRADING_TO_V3.md](docs/UPGRADING_TO_V3.md).
+
+### Breaking
+
+- **Requires Home Assistant 2026.12 or newer.** On an older Home Assistant, stay on v2.0.x.
+- **JetStream keypad button switches are replaced when a bridge moves to the new layout** ([#41](https://github.com/kohai-ut/centralite-ha/issues/41)). An existing bridge is not changed on update: it keeps its layout and its switches until you choose **Configure → Move to one device per JetStream unit**, which shows what will change first. A notice under Settings → Repairs explains this. In v4.0, bridges that have not moved will be moved automatically.
+
+### Added
+
+- **One Home Assistant device per JetStream unit** ([#40](https://github.com/kohai-ut/centralite-ha/issues/40)). Each dimmer, switch and keypad is its own device linked to the bridge, named from the JetStream project, with its own area. Lights keep their entity IDs, names, icons and areas when a bridge moves. New installs start on this layout.
+- **Event and button entities for JetStream keypad buttons** ([#41](https://github.com/kohai-ut/centralite-ha/issues/41)). "Button N" records presses at the wall (a tap is a single press; a hold is a long press start and end; a double tap is two single presses). "Tap button N" presses the button from Home Assistant. "Hold button N", off by default, holds it for two seconds.
+- **Add, change and remove JetStream devices after setup** ([#42](https://github.com/kohai-ut/centralite-ha/issues/42), requested by @pgyrogear, whose patch supplied the batch format and two cases the plan had missed). From Configure: add a device, add several from a list, change a light between dimmer and on/off, or remove a device.
+- **Labels for the button device triggers.** The automation editor now shows "tapped", "pressed (JetStream: held)" and "released (JetStream: after a hold)" instead of raw words (reported by @pgyrogear).
+
+### Changed
+
+- Device triggers on a JetStream unit device list only that unit's buttons. The bridge device still lists every button, so existing automations are unaffected.
+- Fallback entity names ("Load 001" and so on) and "Sync Clock" now come from the translation file. The text and entity IDs are unchanged.
+- README: taps sent from Home Assistant do not fire JetStream button events or triggers (the README previously said they did).
+
+### Fixed
+
+- Replaced two Home Assistant device-registry calls that stop working in Home Assistant 2027.8.
+
 ## [2.0.2] - 2026-11-15
 
 ### Added

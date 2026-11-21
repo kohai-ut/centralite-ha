@@ -45,9 +45,11 @@ In short: **LiteJet → built-in; Elegance / JetStream → here.** If you're not
 - **JetStream device discovery** — no config file? Optionally scan the bridge at setup (`^N`) to pull in device names directly. One-time, never on boot
 - **Load-type aware** — loads marked non-dimmable in your config are exposed as on/off lights, not fake dimmers with a slider that does nothing
 - **Skips unused load slots (Elegance)** — a `.elg` lists all 192 load slots, most of them empty defaults. Only loads that are named or used in a scene/keypad become entities; referenced-but-unnamed loads are created disabled (enable them anytime in HA), and unused slots are skipped entirely. (A `.jts` lists only real devices, so nothing to skip there.)
-- **Device triggers for keypad buttons** — physical button presses (JetStream tap/press/release; Elegance press/release) fire HA device triggers, so automations can run on a wall-switch press. The raw `centralite_event` bus event is also available for any button.
+- **Keypad buttons as events and buttons (JetStream)** — each configured button gets an event entity that records presses at the wall (single press, long press start and end) and a button entity that taps it from Home Assistant. An optional hold button is available for buttons programmed with a press-and-hold action
+- **Device triggers for keypad buttons** — physical button presses (JetStream tapped/held/released; Elegance pressed/released) are also offered as device triggers, and the raw `centralite_event` bus event is available for any button
 - **Sync Clock button (Elegance)** — a button entity that sets the bridge's real-time clock to HA's current time, so the panel's time-of-day schedules stay aligned. Automate the press (e.g. nightly) to correct clock drift. (JetStream has no clock command, so the button only appears on Elegance.) There's also an options toggle, **Sync bridge clock on connect**, that does this automatically after each connection (startup + reconnect) — race-free, no automation needed.
-- **DeviceInfo + has_entity_name** — single device card with all entities grouped underneath, names auto-compose
+- **One device per JetStream unit** — each dimmer, switch and keypad is its own device linked to the bridge, so it can have its own name and area. Elegance uses a single device for the panel
+- **Add, change and remove JetStream devices after setup** — from Configure, one at a time or several from a list, without removing the integration
 - **HACS-compatible** — install as a custom repository (default-listing planned once stable)
 - **One-time migration from v1** — preserves areas, aliases, icons, and dashboard placements
 
@@ -144,11 +146,11 @@ Not every device in your `.jts` becomes an entity. The import skips, without an 
 
 If a light you expected is missing after setup, check these first.
 
-For the devices that are imported, the name and the dimmer setting come from the file, and each configured keypad button (up to three per device) becomes a switch entity.
+For the devices that are imported, the name and the dimmer setting come from the file. Each device becomes its own Home Assistant device, and each configured keypad button (up to three per device) gets an event entity and a button entity on it. (A bridge set up before v3 keeps its earlier layout, with button switches, until you move it: see [Upgrading to v3](docs/UPGRADING_TO_V3.md).)
 
 **Duplicate Device IDs.** If two usable devices in the file share a Device ID, setup still completes. One of them is imported: a named device is preferred over an unnamed one, otherwise the first in the file. A notice under **Settings → Repairs** lists each duplicated ID with the device that was imported and the one that was not. To get both devices into Home Assistant, give them different Device IDs in JetStream Designer, export again, then remove and re-add the integration with the new file.
 
-After setup, you can edit any entity's display name via HA's standard entity-rename UI on its device card.
+After setup, rename a JetStream device or move it to an area from its device page; its light takes its name from the device. Other entities can be renamed with Home Assistant's standard entity settings.
 
 ### Verify it works
 
@@ -170,6 +172,9 @@ A `send:` line with no `rx:` line after it means Home Assistant sent the command
 
 Once configured, **⋮ → Configure** on the integration:
 
+- **JetStream devices** — add a device, add several from a list, change a light between dimmer and on/off, or remove a device. See [Upgrading to v3](docs/UPGRADING_TO_V3.md#adding-changing-and-removing-devices).
+- **Move to one device per JetStream unit** — shown for a JetStream bridge set up before v3. See [Upgrading to v3](docs/UPGRADING_TO_V3.md).
+
 - **Safety-net poll interval** — Elegance only: how often to do a full `^G` query as a fallback for loads not configured for push notifications (default 300s; `0` disables). JetStream has no bulk-state command, so this setting has no effect there; its light levels are read once after each connect (see Troubleshooting) and kept current by push events.
 
 > [!NOTE]
@@ -180,7 +185,8 @@ Once configured, **⋮ → Configure** on the integration:
 - **Elegance scene state is "commanded only".** The Elegance bridge has no scene-state push event. When you activate a scene from HA, the scene-switch reflects the commanded state. Scenes activated externally (physical button, timed event) won't update the HA state. JetStream does not have this limitation (it pushes `SCN` events).
 - **Per-load push events require Customer Options bit set.** In the Elegance Programming Software, each load must be configured for "third party output" individually, OR DIP Switch 5 must be ON (which pushes all loads, one per second). If neither is set, the integration relies on the safety-net poll for updates.
 - **`.elg` format is REV 1.1.** The parser fails gracefully with a clear error if the format isn't recognized; fall back to manual ID entry.
-- **Device triggers fire on HA-originated button commands too.** A device trigger reacts to the bridge's button-activity report, which JetStream also emits when HA itself taps a button (via a button switch entity), not only on a physical wall press. The protocol doesn't distinguish origin, so if you both expose a button as a switch and trigger on it, the trigger fires on HA-initiated taps as well.
+- **Taps sent from Home Assistant do not fire JetStream button events or triggers.** Measured on hardware: the bridge reports a tap made at the wall, but a tap sent with `^T` is answered only with the new light level. So a button's event entity and device triggers react to physical presses only. (Earlier versions of this README said the opposite.)
+- **JetStream "press" and "release" mean a hold.** The bridge sends a tap report for a short press, and press/release reports only when a button is held (roughly half a second to a second) and then let go. A double tap is reported as two taps.
 - **Elegance switch state requires the per-switch "send action" flag.** Named keypad buttons in the `.elg` are imported as switch entities. The keypad `letter+number` → global switch-index mapping (`idx = (letter-'A')*24 + number`) is **confirmed** against a real install. The remaining caveat is *state*: a switch only reports on/off if the bridge is actually programmed to emit press/release events for it (the per-switch "send action" flag, set in the Programming Software). Press-via-HA (`^I`) works regardless.
 - **Single-system Elegance only (multi-system / Elegance XL not yet supported).** A single Elegance or Elegance XL master panel — up to 192 loads, 384 switches, 256 scenes — is fully supported. Multi-system installs (2–4 panels chained, addressing up to 768 loads) are **not** yet: the load cap is fixed at 192 and the `^G`/`^H` bulk-state decoders assume a single board. The protocol path is understood — multi-system uses the per-system `^gs`/`^hs` status queries plus the global 001–768 command index — so adding it is a contained, opt-in change, **but it can't be verified without a 2–4 panel system to test against.** If you have one and want to help, please open an issue.
 
@@ -211,6 +217,10 @@ What you'll see at debug level:
 - `rx: 'P044'` / `rx: 'ACT044...'` — **every raw line the bridge emits**, including spontaneous events from physical button presses and load changes. This is the ground truth for what the hardware is actually sending.
 - `send:` / `sendrecv:` / `recv:` — commands HA sends and their responses.
 - `switch event: idx=44 button=1 action=tap` / `load event:` / `scene event:` — the **decoded** interpretation of each push event. Compare the `idx` here against the physical device you operated to confirm the mapping (handy for the experimental Elegance switch import).
+
+## Upgrading to v3
+
+Version 3 gives each JetStream unit its own device and replaces the keypad button switches. An existing bridge is not changed until you choose to move it. See [docs/UPGRADING_TO_V3.md](docs/UPGRADING_TO_V3.md).
 
 ## Migration from v1
 
