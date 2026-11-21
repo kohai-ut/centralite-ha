@@ -114,7 +114,7 @@
       },
       "remove_device": {
         "title": "Remove a device",
-        "description": "Choose the device to remove from Home Assistant. Nothing changes on the JetStream system itself. You can also use Delete in the menu on the device's own page.",
+        "description": "Choose the device to remove from Home Assistant. Nothing changes on the JetStream system itself. You can also use Delete in the Device info card on the device's own page.",
         "data": {
           "device": "Device"
         }

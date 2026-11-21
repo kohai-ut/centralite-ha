@@ -55,7 +55,7 @@ After moving, **Configure** offers:
 - **Add a device**: the Device ID from JetStream Designer, its type (dimmer, on/off switch, keypad only) and which buttons to add. You can queue several before saving.
 - **Add several devices**: one per line, for example `81, dimmer, 1, 3`.
 - **Change a device** between dimmer and on/off.
-- **Remove a device**, after a confirmation listing what will be deleted. **Delete** in the ⋮ menu on a device's own page does the same.
+- **Remove a device**, after a confirmation listing what will be deleted. **Delete** in the Device info card on a device's own page does the same.
 
 A device must already be programmed in JetStream Designer, with **Send T-Party** on and **Update Third Party** done on the bridge.
 
