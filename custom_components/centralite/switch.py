@@ -88,7 +88,7 @@ class CentraliteJetStreamButtonSwitch(CentraliteBaseEntity, SwitchEntity):
         device_idx: int,
         button_idx: int,
     ) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, unit_idx=device_idx)
         self._device_idx = device_idx
         self._button_idx = button_idx
         self._attr_unique_id = f"{self._entry_id}_button_{device_idx:03d}_{button_idx:02d}"

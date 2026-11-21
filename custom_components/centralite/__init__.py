@@ -58,6 +58,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_migrate_entries(hass, entry)
 
     coordinator = CentraliteCoordinator(hass, entry, protocol)
+
+    # Register the bridge itself rather than leaving it to whichever entity
+    # loads first: unit devices link to it, button events name it, and a
+    # JetStream bridge may have no entities of its own.
+    from homeassistant.helpers import device_registry as dr
+
+    from .const import MANUFACTURER
+
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=coordinator.device_name,
+        manufacturer=MANUFACTURER,
+        model=coordinator.system_label,
+    )
+
     try:
         await coordinator.async_init()
     except Exception as e:

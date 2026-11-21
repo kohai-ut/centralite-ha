@@ -63,7 +63,7 @@ class CentraliteLight(CentraliteBaseEntity, LightEntity):
         dimmable: bool = True,
         enabled_default: bool = True,
     ) -> None:
-        super().__init__(coordinator)
+        super().__init__(coordinator, unit_idx=idx)
         self._idx = idx
         self._dimmable = dimmable
         self._attr_entity_registry_enabled_default = enabled_default
@@ -71,8 +71,13 @@ class CentraliteLight(CentraliteBaseEntity, LightEntity):
         self._attr_color_mode = mode
         self._attr_supported_color_modes = {mode}
         self._attr_unique_id = f"{self._entry_id}_load_{idx:03d}"
-        names = coordinator.config_entry.options.get(OPT_LOAD_NAMES, {})
-        self._attr_name = names.get(str(idx), f"Load {idx:03d}")
+        if self._on_unit:
+            # The light is the main entity of its unit: the device carries the
+            # imported name, so the light has none of its own.
+            self._attr_name = None
+        else:
+            names = coordinator.config_entry.options.get(OPT_LOAD_NAMES, {})
+            self._attr_name = names.get(str(idx), f"Load {idx:03d}")
 
     @property
     def _state(self) -> dict[str, Any]:

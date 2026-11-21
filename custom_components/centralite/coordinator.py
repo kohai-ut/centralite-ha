@@ -320,7 +320,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         device id plus the action and a button subtype that device_trigger's
         enumeration matches.
         """
-        device_id = self._bridge_device_id()
+        device_id = self.bridge_device_id()
         if device_id is None:
             return  # device not registered yet (no entities added); nothing to target
         self.hass.bus.async_fire(
@@ -332,7 +332,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             },
         )
 
-    def _bridge_device_id(self) -> str | None:
+    def bridge_device_id(self) -> str | None:
         """HA device-registry id of the bridge device.
 
         Looked up fresh each time (a registry lookup is just a dict hit) so a
@@ -340,8 +340,9 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         from homeassistant.helpers import device_registry as dr
 
-        device = dr.async_get(self.hass).async_get_device(
-            identifiers={(DOMAIN, self.config_entry.entry_id)}
+        entry_id = self.config_entry.entry_id
+        device = dr.async_get(self.hass).async_get_device_by_identifier(
+            (DOMAIN, entry_id), entry_id
         )
         return device.id if device else None
 
