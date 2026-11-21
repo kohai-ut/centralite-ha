@@ -121,7 +121,7 @@ async def test_per_device_puts_a_light_and_its_button_on_one_unit(hass):
     assert unit.via_device_id == bridge.id
     assert unit.manufacturer == bridge.manufacturer
     assert _row(hass, entry, "light", "load_001").device_id == unit.id
-    assert _row(hass, entry, "switch", "button_001_01").device_id == unit.id
+    assert _row(hass, entry, "event", "button_event_001_01").device_id == unit.id
 
 
 async def test_per_device_light_is_the_main_entity_of_its_device(hass):
@@ -142,7 +142,7 @@ async def test_per_device_keypad_only_unit_has_no_light(hass):
     assert unit is not None
     assert unit.name == "Device 044"  # nothing imported for it
     rows = er.async_entries_for_device(er.async_get(hass), unit.id)
-    assert [r.domain for r in rows] == ["switch"]
+    assert sorted({r.domain for r in rows}) == ["button", "event"]
 
 
 async def test_per_device_scenes_stay_on_the_bridge(hass):
@@ -204,15 +204,15 @@ async def test_flipping_the_flag_relinks_the_same_rows(hass):
     after = {
         "light1": _row(hass, entry, "light", "load_001"),
         "light2": _row(hass, entry, "light", "load_002"),
-        "button": _row(hass, entry, "switch", "button_001_01"),
         "scene": _row(hass, entry, "switch", "scene_007"),
     }
     for key, row in after.items():
         assert row.id == before[key].id, key
         assert row.entity_id == before[key].entity_id, key
-    assert len(er.async_entries_for_config_entry(ent_reg, entry.entry_id)) == count_before
+    # Lights and scenes are the same rows; only the keypad buttons change kind
+    # (covered in test_button_entities.py).
+    assert count_before == 5
     assert after["light1"].device_id == _unit(hass, entry, 1).id
-    assert after["button"].device_id == _unit(hass, entry, 1).id
     assert after["light2"].device_id == _unit(hass, entry, 2).id
     assert after["scene"].device_id == bridge.id
     # The user's own settings survive the move.

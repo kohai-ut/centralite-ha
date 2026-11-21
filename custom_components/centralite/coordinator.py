@@ -40,6 +40,8 @@ from .protocol import LoadEvent, SceneEvent, SwitchEvent
 from .protocol.common import ProtocolError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 
@@ -98,6 +100,7 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._reconnecting = False
         self._shutting_down = False
         self._load_refresh_task: asyncio.Task[None] | None = None
+        self._button_listeners: list[Callable[[SwitchEvent], None]] = []
         protocol.set_load_event_callback(self._on_load_event)
         protocol.set_switch_event_callback(self._on_switch_event)
         protocol.set_scene_event_callback(self._on_scene_event)
@@ -309,7 +312,23 @@ class CentraliteCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # until the next event clears it.
         self.data["switches"][key] = event.action != "release"
         self.async_set_updated_data(self.data)
+        for listener in list(self._button_listeners):
+            listener(event)
         self._fire_button_event(event)
+
+    @callback
+    def async_add_button_listener(
+        self, listener: Callable[[SwitchEvent], None]
+    ) -> CALLBACK_TYPE:
+        """Call ``listener`` with every physical button report; returns a remover."""
+        self._button_listeners.append(listener)
+
+        @callback
+        def _remove() -> None:
+            if listener in self._button_listeners:
+                self._button_listeners.remove(listener)
+
+        return _remove
 
     @callback
     def _fire_button_event(self, event: SwitchEvent) -> None:
