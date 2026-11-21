@@ -60,5 +60,10 @@
       "title": "JetStream import: {count} Device ID(s) used more than once",
       "description": "Your JetStream `.jts` file has more than one device with the same Device ID. A Device ID is the address Home Assistant uses to reach a device through the bridge, so only one device per ID could be imported:\n\n{details}\n\nSetup finished and every other device was imported normally.\n\n**To fix it:** in JetStream Designer, give each of these devices its own Device ID and send the change to the device. Then export the `.jts` again, remove this integration entry and add it back with the new file. If the device that was not imported is one you don't need in Home Assistant, you can ignore this notice."
     }
+  },
+  "device": {
+    "unit": {
+      "name": "Device {id}"
+    }
   }
 }
