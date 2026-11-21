@@ -177,6 +177,25 @@
       },
       "hold_button": {
         "name": "Hold button {number}"
+      },
+      "sync_clock": {
+        "name": "Sync Clock"
+      }
+    },
+    "light": {
+      "load": {
+        "name": "Load {id}"
+      }
+    },
+    "switch": {
+      "keypad_switch": {
+        "name": "Switch {id}"
+      },
+      "button_switch": {
+        "name": "Switch {id} Button {number}"
+      },
+      "scene": {
+        "name": "Scene {id}"
       }
     }
   },

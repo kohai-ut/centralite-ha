@@ -42,6 +42,18 @@ class CentraliteBaseEntity(CoordinatorEntity["CentraliteCoordinator"]):
                 model=coordinator.system_label,
             )
 
+    def _set_name(self, stored: str | None, key: str, **placeholders: str) -> None:
+        """Use the imported name, or a translated fallback when there is none.
+
+        The fallback text lives in the translation file, not here, so it can
+        be translated. It reads the same as before in English.
+        """
+        if stored:
+            self._attr_name = stored
+        else:
+            self._attr_translation_key = key
+            self._attr_translation_placeholders = placeholders
+
     def _unit_device_info(self, idx: int) -> DeviceInfo:
         """One physical JetStream unit, reached through the bridge."""
         entry = self.coordinator.config_entry

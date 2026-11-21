@@ -77,7 +77,7 @@ class CentraliteLight(CentraliteBaseEntity, LightEntity):
             self._attr_name = None
         else:
             names = coordinator.config_entry.options.get(OPT_LOAD_NAMES, {})
-            self._attr_name = names.get(str(idx), f"Load {idx:03d}")
+            self._set_name(names.get(str(idx)), "load", id=f"{idx:03d}")
 
     @property
     def _state(self) -> dict[str, Any]:
