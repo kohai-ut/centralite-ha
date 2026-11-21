@@ -141,3 +141,104 @@ async def test_device_trigger_fires_automation(hass):
     )
     await hass.async_block_till_done()
     assert len(fired) == 1
+
+
+# --- Per-device layout: triggers on a unit device -------------------------
+
+
+def _unit_device(hass, entry, idx):
+    from custom_components.centralite.jetstream_devices import unit_identifier
+
+    return dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={unit_identifier(entry.entry_id, idx)},
+    )
+
+
+async def test_unit_device_lists_only_its_own_buttons(hass):
+    entry, _bridge = _entry_and_device(
+        hass, SYSTEM_JETSTREAM, {CONF_LOAD_IDS: [44, 45], CONF_BUTTON_IDS: [[46, 1]]}
+    )
+    unit = _unit_device(hass, entry, 44)
+    triggers = await device_trigger.async_get_triggers(hass, unit.id)
+    # 3 buttons x 3 actions, all for device 44, all offered on the unit itself.
+    assert len(triggers) == 9
+    assert {t[CONF_DEVICE_ID] for t in triggers} == {unit.id}
+    assert {t[CONF_SUBTYPE] for t in triggers} == {
+        button_subtype(44, b) for b in (1, 2, 3)
+    }
+
+
+async def test_bridge_device_still_lists_every_unit(hass):
+    entry, bridge = _entry_and_device(
+        hass, SYSTEM_JETSTREAM, {CONF_LOAD_IDS: [44, 45]}
+    )
+    _unit_device(hass, entry, 44)
+    triggers = await device_trigger.async_get_triggers(hass, bridge.id)
+    assert len(triggers) == 18
+
+
+async def test_unit_not_in_the_entry_data_lists_nothing(hass):
+    """A stale unit device (address since removed) offers no triggers."""
+    entry, _bridge = _entry_and_device(hass, SYSTEM_JETSTREAM, {CONF_LOAD_IDS: [44]})
+    stale = _unit_device(hass, entry, 99)
+    assert await device_trigger.async_get_triggers(hass, stale.id) == []
+
+
+async def test_get_triggers_does_not_use_deprecated_registry_fields(hass, caplog):
+    _entry, bridge = _entry_and_device(hass, SYSTEM_JETSTREAM, {CONF_LOAD_IDS: [44]})
+    await device_trigger.async_get_triggers(hass, bridge.id)
+    assert "config_entries" not in caplog.text
+
+
+async def test_unit_trigger_fires_on_the_bridge_event(hass):
+    """A trigger saved against a unit device runs when the bridge's event arrives.
+
+    Button events always name the bridge device (unchanged for existing
+    automations), so a unit trigger has to match on the bridge's id.
+    """
+    entry, bridge = _entry_and_device(hass, SYSTEM_JETSTREAM, {CONF_LOAD_IDS: [44]})
+    unit = _unit_device(hass, entry, 44)
+    fired = []
+    hass.bus.async_listen("centralite_test_fired", lambda e: fired.append(e))
+
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {
+            "automation": {
+                "trigger": {
+                    "platform": "device",
+                    "domain": DOMAIN,
+                    "device_id": unit.id,
+                    "type": "tap",
+                    "subtype": button_subtype(44, 2),
+                },
+                "action": {"event": "centralite_test_fired"},
+            }
+        },
+    )
+    await hass.async_block_till_done()
+
+    hass.bus.async_fire(
+        EVENT_BUTTON,
+        {
+            CONF_DEVICE_ID: bridge.id,
+            CONF_TYPE: "tap",
+            CONF_SUBTYPE: button_subtype(44, 2),
+        },
+    )
+    await hass.async_block_till_done()
+    assert len(fired) == 1
+
+    # Another unit's button on the same bridge does not run it.
+    hass.bus.async_fire(
+        EVENT_BUTTON,
+        {
+            CONF_DEVICE_ID: bridge.id,
+            CONF_TYPE: "tap",
+            CONF_SUBTYPE: button_subtype(45, 2),
+        },
+    )
+    await hass.async_block_till_done()
+    assert len(fired) == 1
