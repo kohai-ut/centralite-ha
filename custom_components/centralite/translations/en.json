@@ -50,7 +50,11 @@
         },
         "menu_options": {
           "settings": "Settings",
-          "organize": "Move to one device per JetStream unit"
+          "organize": "Move to one device per JetStream unit",
+          "add_device": "Add a device",
+          "add_batch": "Add several devices",
+          "change_device": "Change a device between dimmer and on/off",
+          "remove_device": "Remove a device"
         }
       },
       "settings": {
@@ -71,14 +75,75 @@
         "data": {
           "confirm": "I have a backup and want to move this bridge"
         }
+      },
+      "add_device": {
+        "title": "Add a JetStream device",
+        "description": "The device must already be programmed in JetStream Designer, with Send T-Party on and Update Third Party done on the bridge. Adding never changes a device that is already set up; an existing device can only gain buttons.",
+        "data": {
+          "device_id": "Device ID",
+          "device_type": "Type",
+          "buttons": "Keypad buttons to add",
+          "name": "Name (optional)"
+        },
+        "data_description": {
+          "device_id": "The Device ID shown in JetStream Designer.",
+          "buttons": "Required for a keypad. Optional for a dimmer or switch that also has buttons."
+        }
+      },
+      "add_more": {
+        "title": "Devices to add",
+        "description": "{count} device(s) ready to add: {ids}. Nothing is saved until you choose Save.",
+        "menu_options": {
+          "add_device": "Add another device",
+          "save_devices": "Save"
+        }
+      },
+      "add_batch": {
+        "title": "Add several JetStream devices",
+        "description": "One device per line: the Device ID, then dimmer, on/off or keypad, then any button numbers from 1 to 3.\n\nExample:\n\n81, dimmer, 1, 3\n\n82, on/off\n\n90, keypad, 2",
+        "data": {
+          "batch": "Devices"
+        }
+      },
+      "change_device": {
+        "title": "Change a device",
+        "description": "Switch a light between dimmer and on/off. The light keeps its entity ID and settings; only whether brightness is offered changes.",
+        "data": {
+          "device": "Device",
+          "device_type": "Type"
+        }
+      },
+      "remove_device": {
+        "title": "Remove a device",
+        "description": "Choose the device to remove from Home Assistant. Nothing changes on the JetStream system itself.",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "remove_confirm": {
+        "title": "Remove device {device}",
+        "description": "These entities will be deleted from Home Assistant, along with their history and any settings you gave them:\n\n{entities}\n\nAutomations, Node-RED flows and dashboards that use them will stop working.",
+        "data": {
+          "confirm": "Remove this device"
+        }
       }
     },
     "error": {
-      "confirm_required": "Tick the box to confirm, or close this window to leave everything as it is."
+      "confirm_required": "Tick the box to confirm, or close this window to leave everything as it is.",
+      "id_out_of_range": "The Device ID must be between 1 and 199.",
+      "bad_button": "Button numbers must be 1, 2 or 3.",
+      "keypad_needs_button": "A keypad needs at least one button.",
+      "bad_type": "Choose dimmer, on/off or keypad.",
+      "duplicate_id": "The same Device ID is listed more than once.",
+      "bad_line": "Line {line} isn't valid. Use: Device ID, then dimmer, on/off or keypad, then any button numbers from 1 to 3.",
+      "empty": "Enter at least one device.",
+      "not_a_load": "That device has no light to change."
     },
     "abort": {
       "not_loaded": "The integration isn't running for this bridge. Reload it and try again.",
-      "bridge_disabled": "The bridge device is disabled. Enable it first, then try again."
+      "bridge_disabled": "The bridge device is disabled. Enable it first, then try again.",
+      "device_list_changed": "The device list changed while this window was open. Nothing was saved; open Configure again.",
+      "no_devices": "No JetStream devices are set up yet."
     }
   },
   "issues": {
@@ -120,6 +185,22 @@
       "tap": "\"{subtype}\" tapped",
       "press": "\"{subtype}\" pressed (JetStream: held)",
       "release": "\"{subtype}\" released (JetStream: after a hold)"
+    }
+  },
+  "selector": {
+    "device_type": {
+      "options": {
+        "dimmer": "Dimmer",
+        "switch": "On/off switch",
+        "keypad": "Keypad only"
+      }
+    },
+    "keypad_button": {
+      "options": {
+        "1": "Button 1",
+        "2": "Button 2",
+        "3": "Button 3"
+      }
     }
   }
 }
