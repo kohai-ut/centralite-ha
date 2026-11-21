@@ -75,6 +75,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     _remove_button_switches_on_per_device(hass, entry)
+    _update_layout_notice(hass, entry)
 
     try:
         await coordinator.async_init()
@@ -85,6 +86,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+def _layout_issue_id(entry: ConfigEntry) -> str:
+    return f"jetstream_layout_{entry.entry_id}"
+
+
+def _update_layout_notice(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Tell the owner of a single-bridge JetStream entry that it will move.
+
+    One notice per entry, covering the layout and its button switches. It is
+    raised on every load while the entry is on the old layout and cleared
+    once it has moved.
+    """
+    from homeassistant.helpers import issue_registry as ir
+
+    from .const import CONF_SYSTEM_TYPE, DOMAIN, SYSTEM_JETSTREAM
+    from .jetstream_devices import is_per_device
+
+    issue_id = _layout_issue_id(entry)
+    if entry.data.get(CONF_SYSTEM_TYPE) != SYSTEM_JETSTREAM or is_per_device(
+        entry.data
+    ):
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="jetstream_layout_deprecated",
+        translation_placeholders={"title": entry.title},
+    )
 
 
 def _remove_button_switches_on_per_device(
@@ -139,6 +173,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     from .const import DOMAIN
 
     ir.async_delete_issue(hass, DOMAIN, f"jts_duplicate_ids_{entry.unique_id}")
+    ir.async_delete_issue(hass, DOMAIN, _layout_issue_id(entry))
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
