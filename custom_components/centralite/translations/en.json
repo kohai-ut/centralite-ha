@@ -71,7 +71,7 @@
       },
       "organize": {
         "title": "Move to one device per JetStream unit",
-        "description": "Today every light and keypad button sits under one bridge device. This moves each physical JetStream unit onto its own device, so it can have its own name and area.\n\n**What changes**\n- {units} devices are created, linked to the bridge.\n- {lights} lights move to their device. Their entity IDs, your names, icons and areas are kept.\n- {switches} keypad button switches are removed and replaced. Each button gets an event entity (\"Button N\", for presses at the wall) and a button entity (\"Tap button N\", to press it from Home Assistant).\n- Scenes stay on the bridge.\n- Anything that targets the whole bridge device will no longer include the lights.\n\n**Switches that will be removed**\n{switch_list}\n\n**Home Assistant automations and scripts that use them or target the bridge**\n{references}\n\nThis list covers Home Assistant automations and scripts only. It cannot see Node-RED flows, dashboards or templates; check those yourself.\n\n**Lights you renamed** (will show as the device name followed by your name)\n{renamed}\n\nThis cannot be undone from here. Take a backup first; going back means restoring it.",
+        "description": "Today every light and keypad button sits under one bridge device. This moves each physical JetStream unit onto its own device, so it can have its own name and area.\n\n**What changes**\n- {units} devices are created, linked to the bridge.\n- {lights} lights move to their device. Their entity IDs, your names, icons and areas are kept.\n- {switches} keypad button switches are removed and replaced. Each button gets an event entity (\"Button N\", for presses at the wall) and a button entity (\"Tap button N\", to press it from Home Assistant).\n- Scenes stay on the bridge.\n- Anything that targets the whole bridge device will no longer include the lights.\n\n**Switches that will be removed**\n{switch_list}\n\n**Home Assistant automations and scripts that use them or target the bridge**\n{references}\n\nThis list covers Home Assistant automations and scripts only. It cannot see Node-RED flows, dashboards or templates; check those yourself.\n\n**Lights you renamed**\n{renamed}\n\nThese keep the name you gave them. To use the device's name instead, turn on \"Use device name\" in the light's settings afterwards.\n\nThis cannot be undone from here. Take a backup first; going back means restoring it.",
         "data": {
           "confirm": "I have a backup and want to move this bridge"
         }
@@ -107,15 +107,14 @@
       },
       "change_device": {
         "title": "Change a device",
-        "description": "Switch a light between dimmer and on/off. The light keeps its entity ID and settings; only whether brightness is offered changes.",
+        "description": "Choose the light to switch between dimmer and on/off.",
         "data": {
-          "device": "Device",
-          "device_type": "Type"
+          "device": "Device"
         }
       },
       "remove_device": {
         "title": "Remove a device",
-        "description": "Choose the device to remove from Home Assistant. Nothing changes on the JetStream system itself.",
+        "description": "Choose the device to remove from Home Assistant. Nothing changes on the JetStream system itself. You can also use Delete in the menu on the device's own page.",
         "data": {
           "device": "Device"
         }
@@ -125,6 +124,13 @@
         "description": "These entities will be deleted from Home Assistant, along with their history and any settings you gave them:\n\n{entities}\n\nAutomations, Node-RED flows and dashboards that use them will stop working.",
         "data": {
           "confirm": "Remove this device"
+        }
+      },
+      "change_type": {
+        "title": "Change device {device}",
+        "description": "The current type is selected. The light keeps its entity ID and settings; only whether brightness is offered changes.",
+        "data": {
+          "device_type": "Type"
         }
       }
     },

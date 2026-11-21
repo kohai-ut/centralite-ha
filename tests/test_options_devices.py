@@ -245,7 +245,13 @@ async def test_change_device_between_dimmer_and_on_off(hass):
         hall = _row(hass, entry, "light", "load_002")
         result = await s.menu("change_device")
         assert result["type"] is FlowResultType.FORM
-        result = await s.step(result, {"device": "2", "device_type": "switch"})
+        result = await s.step(result, {"device": "2"})
+        # The second screen starts on what the light is now, not on a fixed
+        # choice, so submitting it unread changes nothing.
+        assert result["step_id"] == "change_type"
+        assert result["data_schema"]({})["device_type"] == "dimmer"
+        assert "Hall" in result["description_placeholders"]["device"]
+        result = await s.step(result, {"device_type": "switch"})
         assert result["type"] is FlowResultType.CREATE_ENTRY
 
         assert entry.options[OPT_NONDIMMABLE_LOADS] == [2]
@@ -253,6 +259,20 @@ async def test_change_device_between_dimmer_and_on_off(hass):
         assert (after.id, after.entity_id) == (hall.id, hall.entity_id)
         state = hass.states.get(after.entity_id)
         assert state.attributes["supported_color_modes"] == [ColorMode.ONOFF]
+
+
+async def test_change_screen_starts_on_on_off_for_an_on_off_light(hass):
+    entry = _entry(hass)
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, OPT_NONDIMMABLE_LOADS: [2]}
+    )
+    async with _Session(hass, entry) as s:
+        result = await s.menu("change_device")
+        result = await s.step(result, {"device": "2"})
+        assert result["data_schema"]({})["device_type"] == "switch"
+        result = await s.step(result, {"device_type": "switch"})
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert entry.options[OPT_NONDIMMABLE_LOADS] == [2]
 
 
 async def test_remove_device_needs_confirmation_and_deletes_only_that_unit(hass):
