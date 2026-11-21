@@ -46,6 +46,7 @@ from .const import (
     SYSTEM_JETSTREAM,
     SYSTEM_LABELS,
 )
+from .jetstream_devices import CONF_TOPOLOGY, TOPOLOGY_PER_DEVICE, is_per_device
 from .parsers.elg import parse_csv_ids, parse_elg
 from .parsers.jts import parse_jts
 from .protocol.common import MAX_LOADS as ELEGANCE_MAX_LOADS
@@ -293,6 +294,9 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._options[OPT_NONDIMMABLE_LOADS] = sorted(nondimmable)
 
                 title = f"Centralite {SYSTEM_LABELS[self._data[CONF_SYSTEM_TYPE]]}"
+                if self._data[CONF_SYSTEM_TYPE] == SYSTEM_JETSTREAM:
+                    # New JetStream installs start on one device per unit.
+                    self._data[CONF_TOPOLOGY] = TOPOLOGY_PER_DEVICE
                 # Only once nothing else can reject the import.
                 self._report_duplicate_device_ids(jts_duplicates)
                 return self.async_create_entry(
@@ -396,7 +400,7 @@ class CentraliteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class CentraliteOptionsFlow(OptionsFlow):
-    """Edit the safety-net poll interval post-setup.
+    """Settings, plus moving a JetStream entry to one device per unit.
 
     `self.config_entry` is provided by Home Assistant; assigning it here (as
     older code did) raises on HA 2024.11+ where it became a read-only property.
@@ -404,6 +408,27 @@ class CentraliteOptionsFlow(OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        data = self.config_entry.data
+        if (
+            user_input is None
+            and data.get(CONF_SYSTEM_TYPE) == SYSTEM_JETSTREAM
+            and not is_per_device(data)
+        ):
+            # A JetStream entry still on the single-bridge layout can move to
+            # one device per unit from here.
+            return self.async_show_menu(
+                step_id="init", menu_options=["settings", "organize"]
+            )
+        return await self._settings_form("init", user_input)
+
+    async def async_step_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return await self._settings_form("settings", user_input)
+
+    async def _settings_form(
+        self, step_id: str, user_input: dict[str, Any] | None
     ) -> ConfigFlowResult:
         # The clock-sync toggle only applies to Elegance (JetStream has no
         # clock command), so only offer/persist it there.
@@ -435,4 +460,49 @@ class CentraliteOptionsFlow(OptionsFlow):
                     default=cur.get(OPT_SYNC_CLOCK_ON_CONNECT, False),
                 )
             ] = BooleanSelector()
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_dict))
+        return self.async_show_form(step_id=step_id, data_schema=vol.Schema(schema_dict))
+
+    async def async_step_organize(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Preview and confirm the move to one device per JetStream unit."""
+        from .topology_migrate import async_prepare_units, build_preview
+
+        entry = self.config_entry
+        if entry.entry_id not in self.hass.data.get(DOMAIN, {}):
+            return self.async_abort(reason="not_loaded")
+        preview = build_preview(self.hass, entry)
+        if preview.bridge_disabled:
+            # Home Assistant re-derives "disabled by device" when an entity
+            # changes device, which could switch entities back on.
+            return self.async_abort(reason="bridge_disabled")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if user_input.get("confirm"):
+                async_prepare_units(self.hass, entry)
+                # One data change; the entry's update listener reloads it once.
+                self.hass.config_entries.async_update_entry(
+                    entry, data={**entry.data, CONF_TOPOLOGY: TOPOLOGY_PER_DEVICE}
+                )
+                return self.async_create_entry(title="", data=dict(entry.options))
+            errors["confirm"] = "confirm_required"
+
+        def _listing(items: list[str]) -> str:
+            return "\n".join(f"- {item}" for item in items) if items else "-"
+
+        return self.async_show_form(
+            step_id="organize",
+            data_schema=vol.Schema(
+                {vol.Required("confirm", default=False): BooleanSelector()}
+            ),
+            errors=errors,
+            description_placeholders={
+                "units": str(preview.units),
+                "lights": str(preview.lights),
+                "switches": str(len(preview.removed_switches)),
+                "switch_list": _listing(preview.removed_switches),
+                "references": _listing(preview.references),
+                "renamed": _listing(preview.renamed_lights),
+            },
+        )

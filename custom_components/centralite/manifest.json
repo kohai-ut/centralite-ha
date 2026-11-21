@@ -1,6 +1,10 @@
 {
   "domain": "centralite",
   "name": "Centralite Lighting",
+  "after_dependencies": [
+    "automation",
+    "script"
+  ],
   "codeowners": [
     "@kohai-ut"
   ],

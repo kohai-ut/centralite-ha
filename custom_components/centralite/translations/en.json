@@ -47,8 +47,38 @@
         "data_description": {
           "poll_interval": "Elegance only: how often to send a full ^G query to catch any state drift. Push events are the primary update path; this is a safety net for loads that aren't programmed for spontaneous output. JetStream is push-only and ignores this setting.",
           "sync_clock_on_connect": "When enabled, set the Elegance bridge's real-time clock to Home Assistant's local time after each successful connection (startup and after a reconnect). Corrects clock drift without an automation. Runs only once the link is up, so there's no boot-time race."
+        },
+        "menu_options": {
+          "settings": "Settings",
+          "organize": "Move to one device per JetStream unit"
+        }
+      },
+      "settings": {
+        "title": "Centralite options",
+        "description": "Tune how the integration polls the bridge for state changes.",
+        "data": {
+          "poll_interval": "Safety-net poll interval (seconds; 0 to disable)",
+          "sync_clock_on_connect": "Sync bridge clock on connect (Elegance)"
+        },
+        "data_description": {
+          "poll_interval": "Elegance only: how often to send a full ^G query to catch any state drift. Push events are the primary update path; this is a safety net for loads that aren't programmed for spontaneous output. JetStream is push-only and ignores this setting.",
+          "sync_clock_on_connect": "When enabled, set the Elegance bridge's real-time clock to Home Assistant's local time after each successful connection (startup and after a reconnect). Corrects clock drift without an automation. Runs only once the link is up, so there's no boot-time race."
+        }
+      },
+      "organize": {
+        "title": "Move to one device per JetStream unit",
+        "description": "Today every light and keypad button sits under one bridge device. This moves each physical JetStream unit onto its own device, so it can have its own name and area.\n\n**What changes**\n- {units} devices are created, linked to the bridge.\n- {lights} lights move to their device. Their entity IDs, your names, icons and areas are kept.\n- {switches} keypad button switches are removed and replaced. Each button gets an event entity (\"Button N\", for presses at the wall) and a button entity (\"Tap button N\", to press it from Home Assistant).\n- Scenes stay on the bridge.\n- Anything that targets the whole bridge device will no longer include the lights.\n\n**Switches that will be removed**\n{switch_list}\n\n**Home Assistant automations and scripts that use them or target the bridge**\n{references}\n\nThis list covers Home Assistant automations and scripts only. It cannot see Node-RED flows, dashboards or templates; check those yourself.\n\n**Lights you renamed** (will show as the device name followed by your name)\n{renamed}\n\nThis cannot be undone from here. Take a backup first; going back means restoring it.",
+        "data": {
+          "confirm": "I have a backup and want to move this bridge"
         }
       }
+    },
+    "error": {
+      "confirm_required": "Tick the box to confirm, or close this window to leave everything as it is."
+    },
+    "abort": {
+      "not_loaded": "The integration isn't running for this bridge. Reload it and try again.",
+      "bridge_disabled": "The bridge device is disabled. Enable it first, then try again."
     }
   },
   "issues": {
@@ -59,6 +89,10 @@
     "jts_duplicate_ids": {
       "title": "JetStream import: {count} Device ID(s) used more than once",
       "description": "Your JetStream `.jts` file has more than one device with the same Device ID. A Device ID is the address Home Assistant uses to reach a device through the bridge, so only one device per ID could be imported:\n\n{details}\n\nSetup finished and every other device was imported normally.\n\n**To fix it:** in JetStream Designer, give each of these devices its own Device ID and send the change to the device. Then export the `.jts` again, remove this integration entry and add it back with the new file. If the device that was not imported is one you don't need in Home Assistant, you can ignore this notice."
+    },
+    "jetstream_layout_deprecated": {
+      "title": "{title}: move to one device per JetStream unit",
+      "description": "This JetStream bridge still shows every light and keypad button under a single device. A newer layout gives each physical unit its own device, and replaces the keypad button switches with event and button entities.\n\nNothing changes until you choose to move: go to **Settings > Devices & services > Centralite > Configure > Move to one device per JetStream unit**. That screen lists exactly what will change, including the button switches that will be removed.\n\nIn version 4.0, bridges that have not moved will be moved automatically. If you use the button switches in automations or Node-RED flows, move when you are ready to update them."
     }
   },
   "device": {

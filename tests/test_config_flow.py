@@ -173,6 +173,8 @@ async def test_jts_import_jetstream(hass):
     # device 3's configured buttons (ID 0,1 -> protocol 1,2) become button switches
     assert result["data"][CONF_BUTTON_IDS] == [[3, 1], [3, 2]]
     assert result["options"][OPT_SWITCH_NAMES]["003.01"] == "Hall Relay Button 1"
+    # A new JetStream install starts on one device per unit.
+    assert result["data"]["jetstream_topology"] == "per_device"
 
 
 async def test_jts_import_with_duplicate_device_id_succeeds_and_raises_repair(hass):
@@ -449,6 +451,11 @@ async def test_options_flow_jetstream_hides_clock_sync(hass):
     )
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
+    # A JetStream entry on the original layout opens a menu first.
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "settings"}
+    )
     schema_keys = {str(k.schema) for k in result["data_schema"].schema}
     assert OPT_SYNC_CLOCK_ON_CONNECT not in schema_keys  # no clock on JetStream
     result = await hass.config_entries.options.async_configure(
