@@ -116,6 +116,8 @@ Ongoing naming/organization uses native HA settings. Only existing-user migratio
 
 ## 6A. Adding a device after setup (#42)
 
+**Amended 2026-11-21:** the v3 release design §5.3 adds batch entry, a Change device step and disabled-load handling, and its §2.9 records the evaluation of the contributed patch. Where this section says an added device gets switches or that type can never change, the v3 design governs.
+
 **Problem.** The device list is fixed at setup. Adding one dimmer today means removing and re-adding the integration; unique IDs contain the entry ID, so every entity gets a new identity and its customizations are lost. A user (pgyrogear) built a local version on 2.0.1; his code has not been received or reviewed and is input, not a base.
 
 **Requirement.** From Configure, add one or more JetStream devices to an existing entry without changing any existing entity, in BOTH topology modes. Elegance is unchanged.
