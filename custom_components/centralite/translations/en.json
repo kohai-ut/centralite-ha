@@ -80,5 +80,12 @@
         "name": "Hold button {number}"
       }
     }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "tap": "\"{subtype}\" tapped",
+      "press": "\"{subtype}\" pressed (JetStream: held)",
+      "release": "\"{subtype}\" released (JetStream: after a hold)"
+    }
   }
 }

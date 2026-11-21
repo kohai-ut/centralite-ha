@@ -242,3 +242,20 @@ async def test_unit_trigger_fires_on_the_bridge_event(hass):
     )
     await hass.async_block_till_done()
     assert len(fired) == 1
+
+
+def test_every_trigger_type_has_a_label():
+    """The automation editor shows raw action words unless each has a label."""
+    import json
+    from pathlib import Path
+
+    path = Path(device_trigger.__file__).parent / "translations" / "en.json"
+    labels = json.loads(path.read_text(encoding="utf-8"))["device_automation"][
+        "trigger_type"
+    ]
+    assert set(labels) == set(device_trigger.TRIGGER_TYPES)
+    # Each label keeps the button it refers to.
+    assert all("{subtype}" in text for text in labels.values())
+    # "press" and "release" only fire on a hold on JetStream; the label says so.
+    assert "held" in labels["press"]
+    assert "hold" in labels["release"]
